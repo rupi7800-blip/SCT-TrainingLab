@@ -23,6 +23,7 @@
   function fmt(s) { if (!s) return '—'; const d = parse(s); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); }
   function fmtLong(s) { const d = parse(s); return GIORNI[d.getDay()] + ' ' + d.getDate() + ' ' + MESI[d.getMonth()].toLowerCase(); }
   function nomeCompleto(i) { return (i.nome + ' ' + (i.cognome || '')).trim(); }
+  function nomePuntato(i) { const c = (i.cognome || '').trim(); return i.nome + (c ? ' ' + c[0].toUpperCase() + '.' : ''); }
   function iniziali(i) { return ((i.nome || '?')[0] + ((i.cognome || '')[0] || '')).toUpperCase(); }
   function eta(dn) { if (!dn) return null; const t = parse(today()), n = parse(dn); let a = t.getFullYear() - n.getFullYear(); if (t.getMonth() < n.getMonth() || (t.getMonth() === n.getMonth() && t.getDate() < n.getDate())) a--; return a; }
   function consensoDi(email) { if (!email) return null; const e = email.toLowerCase(); return (S.d.consensi || []).filter(c => (c.email || '').toLowerCase() === e).sort((a, b) => b.accettato_il.localeCompare(a.accettato_il))[0] || null; }
@@ -120,7 +121,7 @@
   function partecipanti(ds, slot) {
     return S.d.iscritti.filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) &&
       (!i.data_iscrizione || i.data_iscrizione <= ds))
-      .sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
+      .sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
   }
   function slotLabel(s) { return s.nome + ' ' + s.inizio + '–' + s.fine; }
   function lezioniTesto(i) {
@@ -382,7 +383,7 @@
       h += '<ul class="plist">' + part.map(i => {
         const a = assenza(i.id, ds, s.id);
         return `<li class="${a ? 'abs' : ''}">
-          <button class="pname" data-open="${i.id}"><span class="av">${esc(iniziali(i))}</span><span><b>${esc(nomeCompleto(i))}</b>${a ? `<small>Assente${a.nota ? ' · ' + esc(a.nota) : ''}</small>` : '<small>Presente</small>'}</span></button>
+          <button class="pname" data-open="${i.id}"><span class="av">${esc(iniziali(i))}</span><span><b>${esc(nomePuntato(i))}</b>${a ? `<small>Assente${a.nota ? ' · ' + esc(a.nota) : ''}</small>` : '<small>Presente</small>'}</span></button>
           <span class="dots">${dot(statoCert(i), 'C')}${dot(statoIscr(i), 'I')}${dot(statoQuota(i), 'Q')}</span>
           <button class="pill ${a ? 'ko' : 'ok'}" data-toggle="${i.id}|${s.id}" aria-label="Cambia presenza">${a ? '✕' : '✓'}</button>
         </li>`;
