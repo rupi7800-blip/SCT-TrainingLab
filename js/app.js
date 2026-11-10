@@ -279,6 +279,12 @@
     me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
     tel: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
     mail: '<path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="m3 7 9 6 9-6"/>',
+    ev: '<path d="M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.2 1.3-6.6L2.5 9l6.6-.8z"/>',
+    pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    euro: '<path d="M17 6.5A6.5 6.5 0 0 0 7 12a6.5 6.5 0 0 0 10 5.5M4 10h9M4 14h9"/>',
+    note: '<path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
     back: '<path d="M15 18l-6-6 6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', l: '<path d="M15 18l-6-6 6-6"/>', r: '<path d="M9 18l6-6-6-6"/>'
   };
@@ -288,8 +294,8 @@
   function render() {
     const admin = S.sess.role === 'admin';
     const tabs = admin
-      ? [['cal', 'Calendario', 'cal'], ['iscritti', 'Iscritti', 'isc'], ['imp', 'Impostazioni', 'imp']]
-      : [['lezioni', 'Lezioni', 'les'], ['cal', 'Calendario', 'cal'], ['me', 'Profilo', 'me']];
+      ? [['cal', 'Calendario', 'cal'], ['eventi', 'Eventi', 'ev'], ['iscritti', 'Iscritti', 'isc'], ['imp', 'Impostazioni', 'imp']]
+      : [['lezioni', 'Lezioni', 'les'], ['eventi', 'Eventi', 'ev'], ['cal', 'Calendario', 'cal'], ['me', 'Profilo', 'me']];
     const demo = DB.mode === 'demo' ? demoBar() : '';
     let body = '';
     if (S.view === 'cal') body = viewCal();
@@ -297,6 +303,7 @@
     else if (S.view === 'imp') body = viewImp();
     else if (S.view === 'lezioni') body = viewLezioni();
     else if (S.view === 'me') body = viewMe();
+    else if (S.view === 'eventi') body = viewEventi();
     app.innerHTML = demo + `
       <header class="top">
         <img src="icons/logo.png" alt="" class="top-logo">
@@ -348,9 +355,11 @@
           if (nAss) badge = admin ? `<i class="badge">${nAss}</i>` : '<i class="badge">A</i>';
         }
       }
+      const nEv = eventiDel(ds).length;
+      if (nEv) cls.push(sl.length ? 'hasev' : 'evday');
       if (ds === today()) cls.push('today');
       if (ds === S.day) cls.push('sel');
-      cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}</button>`;
+      cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}</button>`;
     }
     return `
       <section class="card cal">
@@ -361,9 +370,10 @@
         </div>
         <div class="grid wd">${GG.map(x => '<div>' + x + '</div>').join('')}</div>
         <div class="grid">${cells}</div>
-        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
+        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span><span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
       </section>
-      ${admin ? giornoAdmin(S.day) : giornoIscritto(S.day)}`;
+      ${admin ? giornoAdmin(S.day) : giornoIscritto(S.day)}
+      ${eventiGiorno(S.day)}`;
   }
 
   function giornoAdmin(ds) {
@@ -460,6 +470,130 @@
     w.querySelectorAll('[data-popen]').forEach(b => b.onclick = () => openScheda(b.dataset.popen));
   }
 
+
+  /* ------------------------------------------------------------------ eventi */
+  function eventiDel(ds) { return (S.d.eventi || []).filter(e => e.data === ds); }
+  function hm(t) { return t ? String(t).slice(0, 5) : ''; }
+  function mapsUrl(e) {
+    if (e.maps_url) return e.maps_url;
+    return e.luogo ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(e.luogo) : '';
+  }
+  function costoTxt(c) {
+    if (c === null || c === undefined || c === '') return '';
+    const n = Number(c);
+    return n === 0 ? 'Gratuito' : '€ ' + n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function partecipo(e) { const me = S.sess.iscritto; return !!me && (S.d.pe || []).some(p => p.evento_id === e.id && p.iscritto_id === me.id); }
+  function nPart(e) {
+    if (S.sess.role === 'admin') return (S.d.pe || []).filter(p => p.evento_id === e.id).length;
+    return (S.d.conteggi || {})[e.id] || 0;
+  }
+  function eventoCard(e, compatto) {
+    const admin = S.sess.role === 'admin', passato = e.data < today(), url = mapsUrl(e), n = nPart(e), io = partecipo(e);
+    const d = parse(e.data), costo = costoTxt(e.costo);
+    let azioni = '';
+    if (admin) azioni = `<button class="btn sm ghost" data-ev-list="${e.id}">${ic('isc')} Partecipanti · ${n}</button><button class="btn sm ghost" data-ev-edit="${e.id}">${ic('edit')} Modifica</button>`;
+    else if (!passato) azioni = io
+      ? `<button class="btn sm ok-b" data-ev-part="${e.id}|0">✓ Partecipo</button><span class="muted small">Tocca per annullare</span>`
+      : `<button class="btn sm primary" data-ev-part="${e.id}|1">Partecipo</button>`;
+    else azioni = io ? '<span class="tag green">Hai partecipato</span>' : '';
+    return `<article class="card evcard${passato ? ' past' : ''}">
+      <div class="ev-top"><div class="lc-date ev"><b>${d.getDate()}</b><small>${MESI[d.getMonth()].slice(0, 3)}</small></div>
+        <div class="ev-tt"><h3>${esc(e.titolo)}</h3><small class="muted">${esc(GIORNI[d.getDay()])} ${d.getDate()} ${MESI[d.getMonth()].toLowerCase()} ${d.getFullYear()}</small></div>
+        ${!admin && io ? '<span class="tag green">Ci sei</span>' : ''}</div>
+      <ul class="ev-info">
+        ${e.ora ? `<li>${ic('clock')}<span>Ore ${esc(hm(e.ora))}${e.ora_fine ? '–' + esc(hm(e.ora_fine)) : ''}</span></li>` : ''}
+        ${e.luogo ? `<li>${ic('pin')}<a href="${esc(url)}" target="_blank" rel="noopener">${esc(e.luogo)}<small>Apri in Maps ›</small></a></li>` : ''}
+        ${costo ? `<li>${ic('euro')}<span>${esc(costo)}</span></li>` : ''}
+        ${e.note && !compatto ? `<li>${ic('note')}<span class="ev-note">${esc(e.note)}</span></li>` : ''}
+        <li>${ic('isc')}<span>${n} ${n === 1 ? 'partecipante' : 'partecipanti'}</span></li>
+      </ul>
+      ${azioni ? `<div class="ev-act">${azioni}</div>` : ''}
+    </article>`;
+  }
+  function eventiGiorno(ds) {
+    const evs = eventiDel(ds);
+    if (!evs.length) return '';
+    return `<h3 class="sec-t">Eventi del giorno</h3>` + evs.map(e => eventoCard(e)).join('');
+  }
+  function viewEventi() {
+    const admin = S.sess.role === 'admin', t = today();
+    const evs = (S.d.eventi || []).slice().sort((a, b) => (a.data + (a.ora || '')).localeCompare(b.data + (b.ora || '')));
+    const futuri = evs.filter(e => e.data >= t), passati = evs.filter(e => e.data < t).reverse();
+    return `<section class="hello"><h2>Eventi</h2><p class="muted">${admin ? 'Crea gli eventi del Training Lab: gli iscritti segnano "Partecipo".' : 'Tocca "Partecipo" per segnalare che ci sarai.'}</p></section>
+      ${futuri.length ? futuri.map(e => eventoCard(e)).join('') : '<p class="muted card pad">Nessun evento in programma.</p>'}
+      ${passati.length ? `<details class="past-box"><summary>Eventi passati · ${passati.length}</summary>${passati.slice(0, 30).map(e => eventoCard(e, true)).join('')}</details>` : ''}
+      ${admin ? `<button class="fab" id="b-newev" aria-label="Nuovo evento">${ic('plus')}</button>` : ''}`;
+  }
+  function openEventoForm(id) {
+    const e = id ? Object.assign({}, S.d.eventi.find(x => x.id === id)) : { titolo: '', data: S.day >= today() ? S.day : today(), ora: '', ora_fine: '', luogo: '', maps_url: '', costo: '', note: '' };
+    const w = document.createElement('div');
+    w.className = 'sheet';
+    document.body.appendChild(w); document.body.classList.add('noscroll');
+    const close = () => { w.remove(); document.body.classList.remove('noscroll'); };
+    w.innerHTML = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>${id ? 'Modifica evento' : 'Nuovo evento'}</b>
+        ${id ? `<button class="icbtn" data-del aria-label="Elimina">${ic('trash')}</button>` : '<span style="width:38px"></span>'}</div>
+      <div class="sheet-body"><form class="form" id="f-ev">
+        <label>Titolo *<input class="inp" name="titolo" maxlength="120" required value="${esc(e.titolo)}" placeholder="es. Uscita in MTB, Cena sociale…"></label>
+        <label>Data *<input class="inp" type="date" name="data" required value="${esc(e.data)}"></label>
+        <div class="two"><label>Ora inizio<input class="inp" type="time" name="ora" value="${esc(hm(e.ora))}"></label>
+        <label>Ora fine<input class="inp" type="time" name="ora_fine" value="${esc(hm(e.ora_fine))}"></label></div>
+        <label>Luogo<input class="inp" name="luogo" maxlength="200" value="${esc(e.luogo || '')}" placeholder="es. Rifugio Campo dei Fiori, Varese"><small class="hint">Toccando il luogo si apre Google Maps per raggiungerlo.</small></label>
+        <label>Link Maps (facoltativo)<input class="inp" name="maps_url" type="url" maxlength="500" value="${esc(e.maps_url || '')}" placeholder="Incolla il link di condivisione di Google Maps"><small class="hint">Se lo lasci vuoto viene usato l'indirizzo scritto sopra.</small></label>
+        <label>Costo (€)<input class="inp" name="costo" type="number" min="0" step="0.5" inputmode="decimal" value="${e.costo === null || e.costo === undefined ? '' : esc(e.costo)}" placeholder="0 = gratuito, vuoto = non indicato"></label>
+        <label>Note<textarea class="inp" name="note" rows="4" maxlength="2000" placeholder="Cosa portare, ritrovo, abbigliamento…">${esc(e.note || '')}</textarea></label>
+      </form></div>
+      <div class="sheet-foot"><button class="btn primary big" id="b-saveev">${id ? 'Salva evento' : 'Crea evento'}</button></div>`;
+    w.querySelector('[data-x]').onclick = close;
+    const f = w.querySelector('#f-ev');
+    const del = w.querySelector('[data-del]');
+    if (del) del.onclick = async () => {
+      if (!await confirmBox('Eliminare l\'evento?', e.titolo + ' — verranno cancellate anche le partecipazioni.', 'Elimina')) return;
+      await run(() => DB.deleteEvento(id), 'Evento eliminato').catch(() => {}); close(); await ricarica();
+    };
+    w.querySelector('#b-saveev').onclick = async () => {
+      const fd = new FormData(f), o = { id: id || undefined };
+      ['titolo', 'data', 'ora', 'ora_fine', 'luogo', 'maps_url', 'note'].forEach(k => o[k] = (fd.get(k) || '').toString().trim());
+      const c = (fd.get('costo') || '').toString().trim(); o.costo = c === '' ? null : Math.max(0, Number(c.replace(',', '.')) || 0);
+      if (!o.titolo) return toast('Inserisci il titolo', 'err');
+      if (!o.data) return toast('Inserisci la data', 'err');
+      if (o.ora && o.ora_fine && o.ora_fine <= o.ora) return toast('L\'ora di fine deve essere dopo l\'inizio', 'err');
+      if (o.maps_url && !/^https?:\/\//i.test(o.maps_url)) return toast('Il link Maps deve iniziare con https://', 'err');
+      const saved = await run(() => DB.saveEvento(o), id ? 'Evento salvato' : 'Evento creato').catch(() => null);
+      if (!saved) return;
+      close(); S.day = o.data; await ricarica();
+    };
+  }
+  function openEventoPartecipanti(id) {
+    const e = S.d.eventi.find(x => x.id === id); if (!e) return;
+    const ids = (S.d.pe || []).filter(p => p.evento_id === id).map(p => p.iscritto_id);
+    const lista = S.d.iscritti.filter(i => ids.includes(i.id)).sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
+    const altri = S.d.iscritti.filter(i => i.attivo !== false && !ids.includes(i.id)).sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
+    const w = document.createElement('div');
+    w.className = 'sheet';
+    document.body.appendChild(w); document.body.classList.add('noscroll');
+    const close = () => { w.remove(); document.body.classList.remove('noscroll'); };
+    const tot = lista.length, costo = Number(e.costo) || 0;
+    w.innerHTML = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Partecipanti</b><span style="width:38px"></span></div>
+      <div class="sheet-body">
+        <div class="pres-h"><div class="lc-date ev"><b>${parse(e.data).getDate()}</b><small>${MESI[parse(e.data).getMonth()].slice(0, 3)}</small></div>
+          <div><h2>${esc(e.titolo)}</h2><p class="muted">${esc(fmtLong(e.data))}${e.ora ? ' · ore ' + esc(hm(e.ora)) : ''}</p></div></div>
+        <div class="counts big"><span class="cnt ok">${tot} ${tot === 1 ? 'partecipante' : 'partecipanti'}</span>${costo ? `<span class="cnt">Totale quote € ${(tot * costo).toLocaleString('it-IT', { minimumFractionDigits: 2 })}</span>` : ''}</div>
+        <h3 class="sec-t">Partecipano · ${tot}</h3>
+        ${tot ? '<ul class="pres-list ok">' + lista.map(i => `<li><button class="pres-row" data-popen="${esc(i.id)}"><span class="av sm">${esc(iniziali(i))}</span><span class="pn">${esc(nomePuntato(i))}</span><span class="chev">›</span></button></li>`).join('') + '</ul>' : '<p class="muted small">Ancora nessuno.</p>'}
+        ${altri.length ? `<h3 class="sec-t">Aggiungi un iscritto</h3><select class="inp" id="ev-add"><option value="">Scegli…</option>${altri.map(i => `<option value="${esc(i.id)}">${esc(nomeCompleto(i))}</option>`).join('')}</select>` : ''}
+        <p class="hint">Tocca un nome per aprire la scheda.</p>
+      </div>`;
+    w.querySelector('[data-x]').onclick = close;
+    w.querySelectorAll('[data-popen]').forEach(b => b.onclick = () => openScheda(b.dataset.popen));
+    const add = w.querySelector('#ev-add');
+    if (add) add.onchange = async () => {
+      if (!add.value) return;
+      await run(() => DB.partecipa(id, add.value, true), 'Partecipante aggiunto').catch(() => {});
+      await ricarica(); close(); openEventoPartecipanti(id);
+    };
+  }
+
   /* -------------------------------------------------------- lezioni (iscritto) */
   function viewLezioni() {
     const me = S.sess.iscritto;
@@ -472,6 +606,7 @@
     return `<section class="hello"><h2>Ciao ${esc(me.nome)}!</h2>
       <p class="muted">Risulti sempre presente: se non puoi venire, segnala l'assenza.</p></section>
       ${statoCards(me)}
+      ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
       <h3 class="sec-t">Prossime lezioni</h3>
       ${out.length ? out.map(x => lezioneCard(x[0], x[1])).join('') : '<p class="muted card pad">Nessuna lezione in programma.</p>'}`;
   }
@@ -761,6 +896,15 @@
     main.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => { S.filtro = S.filtro === b.dataset.filtro ? 'tutti' : b.dataset.filtro; render(); });
     const nb = $('#b-new'); if (nb) nb.onclick = () => openScheda(null);
     main.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => informativa());
+    const ne = $('#b-newev'); if (ne) ne.onclick = () => openEventoForm(null);
+    main.querySelectorAll('[data-ev-edit]').forEach(b => b.onclick = () => openEventoForm(b.dataset.evEdit));
+    main.querySelectorAll('[data-ev-list]').forEach(b => b.onclick = () => openEventoPartecipanti(b.dataset.evList));
+    main.querySelectorAll('[data-ev-part]').forEach(b => b.onclick = async () => {
+      const [eid, si] = b.dataset.evPart.split('|');
+      b.disabled = true;
+      await run(() => DB.partecipa(eid, S.sess.iscritto.id, si === '1'), si === '1' ? 'Partecipazione segnata' : 'Partecipazione annullata').catch(() => {});
+      await ricarica();
+    });
     main.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => {
       const r = (S.d.registrazioni || []).find(x => x.user_id === b.dataset.reg);
       if (r) openScheda(null, { nome: r.nome, cognome: r.cognome, email: r.email, data_nascita: r.data_nascita || '' });

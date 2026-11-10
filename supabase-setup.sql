@@ -266,3 +266,68 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public.presenze_lezione(date, text) from public, anon;
 grant execute on function public.presenze_lezione(date, text) to authenticated;
+
+-- =====================================================================
+-- v1.4 · Eventi con partecipazione ("Partecipo")
+-- =====================================================================
+create table if not exists public.eventi (
+  id        uuid primary key default gen_random_uuid(),
+  titolo    text not null check (char_length(titolo) between 1 and 120),
+  data      date not null,
+  ora       time,
+  ora_fine  time,
+  luogo     text check (luogo is null or char_length(luogo) <= 200),
+  maps_url  text check (maps_url is null or char_length(maps_url) <= 500),
+  costo     numeric(8,2) check (costo is null or costo >= 0),
+  note      text check (note is null or char_length(note) <= 2000),
+  creato    timestamptz not null default now()
+);
+create index if not exists eventi_data_idx on public.eventi (data);
+
+create or replace function public.e_iscritto_attivo() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from iscritti where email is not null and email <> '' and lower(email) = mia_email() and attivo);
+$$;
+revoke execute on function public.e_iscritto_attivo() from public, anon;
+grant execute on function public.e_iscritto_attivo() to authenticated;
+
+alter table public.eventi enable row level security;
+drop policy if exists "ev leggi" on public.eventi;
+drop policy if exists "ev crea" on public.eventi;
+drop policy if exists "ev modifica" on public.eventi;
+drop policy if exists "ev elimina" on public.eventi;
+create policy "ev leggi" on public.eventi for select to authenticated using (e_admin() or e_iscritto_attivo());
+create policy "ev crea" on public.eventi for insert to authenticated with check (e_admin());
+create policy "ev modifica" on public.eventi for update to authenticated using (e_admin()) with check (e_admin());
+create policy "ev elimina" on public.eventi for delete to authenticated using (e_admin());
+
+create table if not exists public.partecipazioni_eventi (
+  evento_id   uuid not null references public.eventi(id) on delete cascade,
+  iscritto_id uuid not null references public.iscritti(id) on delete cascade,
+  creato      timestamptz not null default now(),
+  primary key (evento_id, iscritto_id)
+);
+alter table public.partecipazioni_eventi enable row level security;
+drop policy if exists "pe leggi" on public.partecipazioni_eventi;
+drop policy if exists "pe crea" on public.partecipazioni_eventi;
+drop policy if exists "pe elimina" on public.partecipazioni_eventi;
+create policy "pe leggi" on public.partecipazioni_eventi for select to authenticated
+  using (e_admin() or mio_iscritto(iscritto_id));
+create policy "pe crea" on public.partecipazioni_eventi for insert to authenticated
+  with check (e_admin() or (mio_iscritto(iscritto_id)
+    and exists (select 1 from eventi e where e.id = evento_id and e.data >= current_date)));
+create policy "pe elimina" on public.partecipazioni_eventi for delete to authenticated
+  using (e_admin() or (mio_iscritto(iscritto_id)
+    and exists (select 1 from eventi e where e.id = evento_id and e.data >= current_date)));
+grant select, insert, update, delete on public.eventi to authenticated;
+grant select, insert, delete on public.partecipazioni_eventi to authenticated;
+
+create or replace function public.conteggio_partecipanti_eventi()
+returns table (evento_id uuid, n bigint)
+language sql stable security definer set search_path = public as $$
+  select p.evento_id, count(*) from partecipazioni_eventi p
+  where e_admin() or e_iscritto_attivo()
+  group by p.evento_id;
+$$;
+revoke execute on function public.conteggio_partecipanti_eventi() from public, anon;
+grant execute on function public.conteggio_partecipanti_eventi() to authenticated;

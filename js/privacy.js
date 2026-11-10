@@ -12,7 +12,7 @@ window.PRIVACY = {
       <p>${t}. Per qualsiasi richiesta sulla privacy puoi rivolgerti a: ${c}.</p>
       <h4>2. Quali dati trattiamo</h4>
       <p>Nome, cognome, data di nascita, email, numero di telefono; data di iscrizione e scadenza; pagamento delle quote mensili;
-      lezioni frequentate e assenze segnalate; tipo e data di scadenza del certificato medico sportivo
+      lezioni frequentate e assenze segnalate; eventi a cui partecipi; tipo e data di scadenza del certificato medico sportivo
       (l'app <b>non</b> conserva il certificato né diagnosi o altre informazioni sanitarie).</p>
       <h4>3. Perché li trattiamo e su quale base</h4>
       <p>a) Gestire l'iscrizione al Training Lab, le lezioni, le presenze e le quote — esecuzione del rapporto associativo (art. 6.1.b GDPR).<br>

@@ -258,3 +258,28 @@ label .inp { margin-top: 5px; }
 .pres-row .pn { flex: 1; }
 .pres-row .chev { color: var(--muted); font-size: 20px; line-height: 1; }
 .pres-row:active { background: #f6f7f9; }
+
+/* eventi */
+:root { --ev: #3b6fe0; --ev-l: #e6eeff; }
+.d.evday { background: var(--ev-l); color: var(--ev); }
+.d.sel.evday { background: var(--ev); color: #fff; }
+.evdot { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 7px; height: 7px; border-radius: 50%; background: var(--ev); }
+.d.sel .evdot { background: #fff; }
+.lg.ev { background: var(--ev-l); border: 1px solid var(--ev); }
+.lc-date.ev { background: var(--ev-l); color: var(--ev); }
+.evcard { padding: 14px; border-left: 4px solid var(--ev); }
+.evcard.past { opacity: .75; }
+.ev-top { display: flex; gap: 12px; align-items: center; }
+.ev-tt { flex: 1; min-width: 0; }
+.ev-tt h3 { font-size: 17px; line-height: 1.25; }
+.ev-info { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ev-info li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; }
+.ev-info .ic { width: 19px; height: 19px; color: var(--ev); margin-top: 1px; }
+.ev-info a { color: var(--ev); font-weight: 600; text-decoration: none; display: flex; flex-direction: column; }
+.ev-info a small { font-size: 12px; font-weight: 600; opacity: .8; }
+.ev-note { white-space: pre-wrap; color: var(--ink2); }
+.ev-act { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.btn.ok-b { background: var(--green); color: #fff; }
+.past-box { margin-top: 8px; }
+.past-box summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 10px 2px; font-size: 14px; }
+.tabs .tab span { font-size: 11px; }

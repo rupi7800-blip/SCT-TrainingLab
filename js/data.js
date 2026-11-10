@@ -35,6 +35,7 @@
     let mem = null;
     try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; }
     if (!mem) mem = { settings: defaultSettings(), iscritti: [], pagamenti: [], assenze: [], annullamenti: [], vista: 'admin' };
+    mem.eventi = mem.eventi || []; mem.pe = mem.pe || [];
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* solo in memoria */ } };
     const uid = () => 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const ok = v => Promise.resolve(JSON.parse(JSON.stringify(v)));
@@ -56,7 +57,10 @@
           iscritti: mem.vista === 'admin' ? mem.iscritti : mem.iscritti.filter(i => i.id === mem.vista),
           pagamenti: mem.vista === 'admin' ? mem.pagamenti : mem.pagamenti.filter(p => p.iscritto_id === mem.vista),
           assenze: mem.vista === 'admin' ? mem.assenze : mem.assenze.filter(a => a.iscritto_id === mem.vista),
-          annullamenti: mem.annullamenti, registrazioni: [], consensi: []
+          annullamenti: mem.annullamenti, registrazioni: [], consensi: [],
+          eventi: mem.eventi.slice().sort((a, b) => (a.data + (a.ora || '')).localeCompare(b.data + (b.ora || ''))),
+          pe: mem.vista === 'admin' ? mem.pe : mem.pe.filter(p => p.iscritto_id === mem.vista),
+          conteggi: mem.pe.reduce((m, p) => { m[p.evento_id] = (m[p.evento_id] || 0) + 1; return m; }, {})
         });
       },
       async saveSettings(s) { mem.settings = s; save(); return ok(s); },
@@ -92,6 +96,17 @@
       async setAnnullamento(data, slot, motivo) {
         mem.annullamenti = mem.annullamenti.filter(x => !(x.data === data && x.slot === slot));
         if (motivo !== null) mem.annullamenti.push({ data, slot, motivo: motivo || '' });
+        save();
+      },
+      async saveEvento(o) {
+        if (!o.id) { o.id = uid(); mem.eventi.push(o); }
+        else { const i = mem.eventi.findIndex(x => x.id === o.id); if (i >= 0) mem.eventi[i] = o; }
+        save(); return ok(o);
+      },
+      async deleteEvento(id) { mem.eventi = mem.eventi.filter(x => x.id !== id); mem.pe = mem.pe.filter(x => x.evento_id !== id); save(); },
+      async partecipa(evento_id, iscritto_id, si) {
+        mem.pe = mem.pe.filter(x => !(x.evento_id === evento_id && x.iscritto_id === iscritto_id));
+        if (si) mem.pe.push({ evento_id, iscritto_id, creato: new Date().toISOString() });
         save();
       },
       async presenzeLezione(data, slot) {
@@ -216,18 +231,23 @@
       },
       async loadAll() {
         const from = new Date(); from.setDate(from.getDate() - 400);
-        const [imp, isc, pag, ass, ann, reg, con] = await Promise.all([
+        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt] = await Promise.all([
           sb.from('impostazioni').select('dati').eq('id', 1).maybeSingle(),
           sb.from('iscritti').select('*').order('cognome').order('nome'),
           sb.from('pagamenti').select('*'),
           sb.from('assenze').select('*').gte('data', ymd(from)),
           sb.from('annullamenti').select('*'),
           sb.from('registrazioni').select('*').order('creato', { ascending: false }),
-          sb.from('consensi_privacy').select('email,versione,accettato_il')
+          sb.from('consensi_privacy').select('email,versione,accettato_il'),
+          sb.from('eventi').select('*').gte('data', ymd(from)).order('data').order('ora'),
+          sb.from('partecipazioni_eventi').select('*'),
+          sb.rpc('conteggio_partecipanti_eventi')
         ]);
         return {
           settings: withDefaults(chk(imp) && chk(imp).dati),
-          iscritti: chk(isc) || [], pagamenti: chk(pag) || [], assenze: chk(ass) || [], annullamenti: chk(ann) || [], registrazioni: chk(reg) || [], consensi: chk(con) || []
+          iscritti: chk(isc) || [], pagamenti: chk(pag) || [], assenze: chk(ass) || [], annullamenti: chk(ann) || [], registrazioni: chk(reg) || [], consensi: chk(con) || [],
+          eventi: chk(evs) || [], pe: chk(pe) || [],
+          conteggi: (chk(cnt) || []).reduce((m, r) => { m[r.evento_id] = Number(r.n); return m; }, {})
         };
       },
       async saveSettings(s) {
@@ -244,6 +264,17 @@
         chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
       async deleteIscritto(id) { chk(await sb.from('iscritti').delete().eq('id', id)); },
+      async saveEvento(o) {
+        const row = {};
+        ['titolo', 'data', 'ora', 'ora_fine', 'luogo', 'maps_url', 'costo', 'note'].forEach(k => { row[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
+        if (o.id) return chk(await sb.from('eventi').update(row).eq('id', o.id).select().single());
+        return chk(await sb.from('eventi').insert(row).select().single());
+      },
+      async deleteEvento(id) { chk(await sb.from('eventi').delete().eq('id', id)); },
+      async partecipa(evento_id, iscritto_id, si) {
+        if (si) chk(await sb.from('partecipazioni_eventi').upsert({ evento_id, iscritto_id }, { onConflict: 'evento_id,iscritto_id', ignoreDuplicates: true }));
+        else chk(await sb.from('partecipazioni_eventi').delete().eq('evento_id', evento_id).eq('iscritto_id', iscritto_id));
+      },
       async presenzeLezione(data, slot) {
         return chk(await sb.rpc('presenze_lezione', { p_data: data, p_slot: slot })) || [];
       },
