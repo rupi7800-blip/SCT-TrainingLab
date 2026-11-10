@@ -118,7 +118,7 @@
   /* --------------------------------------------------------------- ONLINE */
   function onlineBackend(cfg) {
     let sb = null;
-    const CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+    const CDN = 'js/vendor/supabase.js'; // libreria inclusa nell'app (funziona anche senza CDN)
     function loadScript(src) {
       return new Promise((res, rej) => {
         if (window.supabase && window.supabase.createClient) return res();

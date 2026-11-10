@@ -4,7 +4,7 @@
    una versione nuova. Non serve cambiare questo file a ogni rilascio. */
 const CACHE = 'sct-traininglab-app';
 const ASSETS = [
-  './', './index.html', './css/style.css', './js/config.js', './js/data.js', './js/app.js', './js/aggiornamenti.js',
+  './', './index.html', './css/style.css', './js/config.js', './js/data.js', './js/app.js', './js/aggiornamenti.js', './js/vendor/supabase.js',
   './manifest.webmanifest', './icons/logo.png', './icons/icon-32.png', './icons/icon-180.png', './icons/icon-192.png',
   './icons/icon-512.png', './icons/maskable-512.png'
 ];
