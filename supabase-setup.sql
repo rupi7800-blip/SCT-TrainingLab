@@ -246,3 +246,23 @@ begin
   return new;
 end $$;
 revoke execute on function public.nuovo_utente() from public, anon, authenticated;
+
+-- =====================================================================
+-- v1.2 · Scheda presenze: nome + iniziale del cognome, visibile agli iscritti
+-- =====================================================================
+create or replace function public.presenze_lezione(p_data date, p_slot text)
+returns table (nome text, iniziale text, assente boolean)
+language sql stable security definer set search_path = public as $$
+  select i.nome,
+         upper(left(coalesce(i.cognome, ''), 1)) as iniziale,
+         exists (select 1 from assenze a where a.iscritto_id = i.id and a.data = p_data and a.slot = p_slot) as assente
+  from iscritti i
+  where (e_admin() or exists (select 1 from iscritti me
+                              where me.email is not null and me.email <> '' and lower(me.email) = mia_email() and me.attivo))
+    and i.attivo
+    and p_slot = any (i.lezioni)
+    and (i.data_iscrizione is null or i.data_iscrizione <= p_data)
+  order by i.nome, i.cognome;
+$$;
+revoke execute on function public.presenze_lezione(date, text) from public, anon;
+grant execute on function public.presenze_lezione(date, text) to authenticated;

@@ -94,6 +94,12 @@
         if (motivo !== null) mem.annullamenti.push({ data, slot, motivo: motivo || '' });
         save();
       },
+      async presenzeLezione(data, slot) {
+        return mem.iscritti.filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) && (!i.data_iscrizione || i.data_iscrizione <= data))
+          .map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(),
+            assente: mem.assenze.some(x => x.iscritto_id === i.id && x.data === data && x.slot === slot) }))
+          .sort((a, b) => (a.nome + a.iniziale).localeCompare(b.nome + b.iniziale));
+      },
       reset() { try { localStorage.removeItem(KEY); } catch (e) {} },
       loadExample() {
         const s = withDefaults(mem.settings);
@@ -210,6 +216,9 @@
         chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
       async deleteIscritto(id) { chk(await sb.from('iscritti').delete().eq('id', id)); },
+      async presenzeLezione(data, slot) {
+        return chk(await sb.rpc('presenze_lezione', { p_data: data, p_slot: slot })) || [];
+      },
       async setPagamento(iscritto_id, mese, pagato, importo) {
         if (pagato) chk(await sb.from('pagamenti').upsert({ iscritto_id, mese, importo: importo || null, pagato_il: ymd(new Date()) }));
         else chk(await sb.from('pagamenti').delete().eq('iscritto_id', iscritto_id).eq('mese', mese));

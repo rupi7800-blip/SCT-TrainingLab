@@ -29,6 +29,20 @@
   function meseCorrente() { return today().slice(0, 7); }
   function nomeMese(m) { const [y, mm] = m.split('-').map(Number); return MESI[mm - 1] + ' ' + y; }
 
+  const EYE_ON = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6A17.3 17.3 0 0 0 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+  function pwField(attrs) {
+    return '<span class="pw-wrap"><input class="inp" type="password" ' + attrs + '><button type="button" class="pw-eye" aria-label="Mostra password" data-pweye>' + EYE_ON + '</button></span>';
+  }
+  function bindPw(root) {
+    (root || document).querySelectorAll('[data-pweye]').forEach(b => b.onclick = () => {
+      const i = b.previousElementSibling, show = i.type === 'password';
+      i.type = show ? 'text' : 'password';
+      b.innerHTML = show ? EYE_OFF : EYE_ON;
+      b.setAttribute('aria-label', show ? 'Nascondi password' : 'Mostra password');
+      i.focus();
+    });
+  }
   function toast(msg, tipo) {
     const t = document.createElement('div');
     t.className = 'toast' + (tipo ? ' ' + tipo : ''); t.textContent = msg;
@@ -56,11 +70,11 @@
     return modal('<h3>' + esc(titolo) + '</h3><p>' + esc(testo) + '</p><div class="m-row"><button class="btn ghost" data-close>Annulla</button><button class="btn danger" data-ok>' + esc(si || 'Conferma') + '</button></div>',
       (w, close) => { w.querySelector('[data-ok]').onclick = () => close(true); });
   }
-  function askText(titolo, testo, placeholder, si) {
+  function askText(titolo, testo, placeholder, si, tipo) {
     return modal('<h3>' + esc(titolo) + '</h3>' + (testo ? '<p>' + esc(testo) + '</p>' : '') +
-      '<input class="inp" maxlength="200" placeholder="' + esc(placeholder || '') + '"><div class="m-row"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" data-ok>' + esc(si || 'Conferma') + '</button></div>',
+      (tipo === 'password' ? pwField('maxlength="72" placeholder="' + esc(placeholder || '') + '" autocomplete="new-password"') : '<input class="inp" maxlength="200" placeholder="' + esc(placeholder || '') + '">') + '<div class="m-row"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" data-ok>' + esc(si || 'Conferma') + '</button></div>',
       (w, close) => {
-        const i = w.querySelector('input'); setTimeout(() => i.focus(), 50);
+        const i = w.querySelector('input'); bindPw(w); setTimeout(() => i.focus(), 50);
         w.querySelector('[data-ok]').onclick = () => close(i.value.trim());
         i.onkeydown = e => { if (e.key === 'Enter') close(i.value.trim()); };
       });
@@ -158,7 +172,7 @@
           <label>Cognome *<input class="inp" name="cognome" autocomplete="family-name" maxlength="60" required></label></div>
           <label>Data di nascita *<input class="inp" type="date" name="nascita" max="${oggi}" min="1920-01-01" required></label>` : ''}
           <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" autocomplete="email" required></label>
-          <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}<input class="inp" type="password" name="pw" autocomplete="${reg ? 'new-password' : 'current-password'}" minlength="6" required></label>
+          <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}${pwField('name="pw" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" minlength="6" required')}</label>
           ${reg ? `<label class="check priv"><input type="checkbox" name="privacy"> <span>Ho letto e accetto <button type="button" class="link inline" id="b-inf">l'informativa sulla privacy</button> e acconsento al trattamento dei miei dati per la gestione del Training Lab *</span></label>` : ''}
           <button class="btn primary big" type="submit">${reg ? 'Registrati' : 'Accedi'}</button>
           <button class="btn ghost" type="button" id="b-mode">${reg ? 'Ho già un account: accedi' : 'Prima volta? Crea l\'account'}</button>
@@ -167,6 +181,7 @@
         </form>
       </div>`;
     const f = $('#f-login');
+    bindPw(f);
     $('#b-mode').onclick = () => renderLogin(!reg);
     const inf = $('#b-inf'); if (inf) inf.onclick = e => { e.preventDefault(); informativa(); };
     f.onsubmit = async e => {
@@ -207,7 +222,7 @@
     $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
   }
   async function nuovaPassword() {
-    const pw = await askText('Nuova password', 'Scegli una nuova password (almeno 6 caratteri).', 'Nuova password', 'Salva');
+    const pw = await askText('Nuova password', 'Scegli una nuova password (almeno 6 caratteri).', 'Nuova password', 'Salva', 'password');
     if (pw && pw.length >= 6) await run(() => DB.updatePassword(pw), 'Password aggiornata').catch(() => {});
   }
   function renderNonAbilitato() {
@@ -326,7 +341,7 @@
       const ass = part.filter(i => assenza(i.id, ds, s.id));
       h += `<div class="card slot">
         <div class="slot-h"><div><b>${esc(s.nome)}</b> · ${esc(s.inizio)}–${esc(s.fine)}${S.d.settings.luogo ? '<br><small class="muted">' + esc(S.d.settings.luogo) + '</small>' : ''}</div>
-          ${ann ? `<button class="btn sm ghost" data-ripr="${s.id}">Ripristina</button>` : `<button class="btn sm ghost" data-annulla="${s.id}">Annulla lezione</button>`}</div>`;
+          <span class="slot-act">${ann ? '' : `<button class="btn sm ghost" data-pres="${ds}|${s.id}">Presenze</button>`}${ann ? `<button class="btn sm ghost" data-ripr="${s.id}">Ripristina</button>` : `<button class="btn sm ghost" data-annulla="${s.id}">Annulla</button>`}</span></div>`;
       if (ann) { h += `<p class="ann-msg">Lezione annullata${ann.motivo ? ': ' + esc(ann.motivo) : ''}</p></div>`; return; }
       h += `<div class="counts"><span class="cnt ok">${part.length - ass.length} presenti</span><span class="cnt ko">${ass.length} ${ass.length === 1 ? 'assente' : 'assenti'}</span><span class="cnt">${part.length} iscritti</span></div>`;
       if (!part.length) h += '<p class="muted">Nessun iscritto a questa lezione.</p>';
@@ -361,12 +376,46 @@
       stato = `<span class="tag green">Presente</span>`;
       if (!passata) btn = `<button class="btn sm danger-o" data-meass="${ds}|${s.id}">Segnala assenza</button>`;
     }
-    return `<div class="card les-card${ann ? ' is-ann' : ''}">
+    return `<div class="card les-card${ann ? ' is-ann' : ''}" data-pres="${ds}|${s.id}" role="button" tabindex="0">
       <div class="lc-date"><b>${parse(ds).getDate()}</b><small>${MESI[parse(ds).getMonth()].slice(0, 3)}</small></div>
-      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b>${stato}</div>
+      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b>${stato}<small class="lc-more">Vedi chi c'è ›</small></div>
       ${btn}</div>`;
   }
   function dot(st, l) { return `<i class="dot ${st.c}" title="${esc(st.t)}">${l}</i>`; }
+
+
+  /* -------------------------------------------- scheda presenze di una lezione */
+  async function openPresenze(ds, slotId) {
+    const s = S.d.settings.slots.find(x => x.id === slotId);
+    if (!s) return;
+    const ann = annullata(ds, slotId);
+    const w = document.createElement('div');
+    w.className = 'sheet';
+    document.body.appendChild(w);
+    document.body.classList.add('noscroll');
+    const close = () => { w.remove(); document.body.classList.remove('noscroll'); };
+    const head = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Presenze</b><span style="width:38px"></span></div>`;
+    const titolo = `<div class="pres-h"><div class="lc-date"><b>${parse(ds).getDate()}</b><small>${MESI[parse(ds).getMonth()].slice(0, 3)}</small></div>
+      <div><h2>${esc(fmtLong(ds))}</h2><p class="muted">${s.nome === GIORNI[parse(ds).getDay()] ? '' : esc(s.nome) + ' · '}Ore ${esc(s.inizio)}–${esc(s.fine)}${S.d.settings.luogo ? ' · ' + esc(S.d.settings.luogo) : ''}</p></div></div>`;
+    w.innerHTML = head + `<div class="sheet-body">${titolo}<p class="muted pad">Caricamento…</p></div>`;
+    w.querySelector('[data-x]').onclick = close;
+    if (ann) {
+      w.querySelector('.sheet-body').innerHTML = titolo + `<p class="ann-msg">Lezione annullata${ann.motivo ? ': ' + esc(ann.motivo) : ''}</p>`;
+      return;
+    }
+    let lista;
+    try { lista = await DB.presenzeLezione(ds, slotId); }
+    catch (e) { w.querySelector('.sheet-body').innerHTML = titolo + `<p class="muted pad">${esc(e.message)}</p>`; return; }
+    const nomeP = p => esc(p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : ''));
+    const pres = lista.filter(p => !p.assente), ass = lista.filter(p => p.assente);
+    const futura = ds >= today();
+    const li = (arr, cls) => arr.length ? '<ul class="pres-list ' + cls + '">' + arr.map(p => `<li><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span>${nomeP(p)}</li>`).join('') + '</ul>' : '<p class="muted small">Nessuno</p>';
+    w.querySelector('.sheet-body').innerHTML = titolo + `
+      <div class="counts big"><span class="cnt ok">${pres.length} ${futura ? (pres.length === 1 ? 'sarà presente' : 'saranno presenti') : (pres.length === 1 ? 'presente' : 'presenti')}</span><span class="cnt ko">${ass.length} ${ass.length === 1 ? 'assente' : 'assenti'}</span></div>
+      <h3 class="sec-t">${futura ? 'Ci saranno' : 'Presenti'} · ${pres.length}</h3>${li(pres, 'ok')}
+      <h3 class="sec-t">Assenti · ${ass.length}</h3>${li(ass, 'ko')}
+      <p class="hint">Gli iscritti risultano presenti salvo assenza segnalata.</p>`;
+  }
 
   /* -------------------------------------------------------- lezioni (iscritto) */
   function viewLezioni() {
@@ -631,6 +680,11 @@
       const d = document.querySelector('.day'); if (d) d.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
     main.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openScheda(b.dataset.open));
+    main.querySelectorAll('[data-pres]').forEach(el => {
+      const go = e => { if (e.target.closest('button') && e.target.closest('button') !== el) return; const [ds, sl] = el.dataset.pres.split('|'); openPresenze(ds, sl); };
+      el.onclick = go;
+      el.onkeydown = e => { if (e.key === 'Enter') go(e); };
+    });
     main.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
       const [iid, slot] = b.dataset.toggle.split('|'), a = assenza(iid, S.day, slot);
       if (a) await run(() => DB.removeAssenza({ iscritto_id: iid, data: S.day, slot })).catch(() => {});

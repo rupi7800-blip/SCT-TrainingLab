@@ -234,3 +234,22 @@ label .inp { margin-top: 5px; }
 .rlist .inf { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .rlist small { color: var(--muted); font-size: 12px; word-break: break-all; }
 .privline { font-size: 13px; color: var(--ink2); margin: 0 2px 12px; }
+.pw-wrap { position: relative; display: block; margin-top: 5px; }
+.pw-wrap .inp { margin-top: 0; padding-right: 48px; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; border-radius: 10px; }
+.pw-eye:active { background: #eef0f3; }
+.les-card { cursor: pointer; }
+.lc-more { color: var(--red-d); font-size: 12px; font-weight: 600; }
+.slot-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.pres-h { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+.pres-h h2 { font-size: 19px; }
+.pres-h p { margin: 2px 0 0; }
+.counts.big .cnt { font-size: 14px; padding: 6px 12px; }
+.pres-list { list-style: none; margin: 0; padding: 4px 0; background: #fff; border-radius: var(--r); box-shadow: var(--sh); }
+.pres-list li { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line); font-weight: 600; }
+.pres-list li:first-child { border-top: 0; }
+.pres-list.ko li { color: var(--redst); }
+.pres-list.ko .av { background: var(--redst-l); color: var(--redst); }
+.pres-list.ok .av { background: var(--green-l); color: var(--green); }
+.av.sm { width: 30px; height: 30px; font-size: 12px; }
+.small { font-size: 13px; margin: 4px 2px; }
