@@ -253,3 +253,8 @@ label .inp { margin-top: 5px; }
 .pres-list.ok .av { background: var(--green-l); color: var(--green); }
 .av.sm { width: 30px; height: 30px; font-size: 12px; }
 .small { font-size: 13px; margin: 4px 2px; }
+.pres-list li:has(.pres-row) { padding: 0; }
+.pres-row { width: 100%; border: 0; background: none; display: flex; align-items: center; gap: 10px; padding: 9px 14px; font: inherit; font-weight: 600; color: inherit; text-align: left; cursor: pointer; }
+.pres-row .pn { flex: 1; }
+.pres-row .chev { color: var(--muted); font-size: 20px; line-height: 1; }
+.pres-row:active { background: #f6f7f9; }

@@ -438,18 +438,26 @@
       w.querySelector('.sheet-body').innerHTML = titolo + `<p class="ann-msg">Lezione annullata${ann.motivo ? ': ' + esc(ann.motivo) : ''}</p>`;
       return;
     }
+    const admin = S.sess.role === 'admin';
     let lista;
-    try { lista = await DB.presenzeLezione(ds, slotId); }
+    try {
+      lista = admin
+        ? partecipanti(ds, slotId).map(i => ({ id: i.id, nome: i.nome, iniziale: (i.cognome || '').trim().slice(0, 1).toUpperCase(), assente: !!assenza(i.id, ds, slotId) }))
+        : await DB.presenzeLezione(ds, slotId);
+    }
     catch (e) { w.querySelector('.sheet-body').innerHTML = titolo + `<p class="muted pad">${esc(e.message)}</p>`; return; }
     const nomeP = p => esc(p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : ''));
     const pres = lista.filter(p => !p.assente), ass = lista.filter(p => p.assente);
     const futura = ds >= today();
-    const li = (arr, cls) => arr.length ? '<ul class="pres-list ' + cls + '">' + arr.map(p => `<li><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span>${nomeP(p)}</li>`).join('') + '</ul>' : '<p class="muted small">Nessuno</p>';
+    const li = (arr, cls) => arr.length ? '<ul class="pres-list ' + cls + '">' + arr.map(p => p.id
+        ? `<li><button class="pres-row" data-popen="${esc(p.id)}"><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span><span class="pn">${nomeP(p)}</span><span class="chev">›</span></button></li>`
+        : `<li><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span>${nomeP(p)}</li>`).join('') + '</ul>' : '<p class="muted small">Nessuno</p>';
     w.querySelector('.sheet-body').innerHTML = titolo + `
       <div class="counts big"><span class="cnt ok">${pres.length} ${futura ? (pres.length === 1 ? 'sarà presente' : 'saranno presenti') : (pres.length === 1 ? 'presente' : 'presenti')}</span><span class="cnt ko">${ass.length} ${ass.length === 1 ? 'assente' : 'assenti'}</span></div>
       <h3 class="sec-t">${futura ? 'Ci saranno' : 'Presenti'} · ${pres.length}</h3>${li(pres, 'ok')}
       <h3 class="sec-t">Assenti · ${ass.length}</h3>${li(ass, 'ko')}
-      <p class="hint">Gli iscritti risultano presenti salvo assenza segnalata.</p>`;
+      <p class="hint">Gli iscritti risultano presenti salvo assenza segnalata.${admin ? ' Tocca un nome per aprire la scheda.' : ''}</p>`;
+    w.querySelectorAll('[data-popen]').forEach(b => b.onclick = () => openScheda(b.dataset.popen));
   }
 
   /* -------------------------------------------------------- lezioni (iscritto) */
