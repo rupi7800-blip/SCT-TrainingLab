@@ -25,7 +25,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 create or replace function public.mia_email() returns text
-language sql stable as $$
+language sql stable set search_path = public as $$
   select lower(coalesce(auth.jwt() ->> 'email', ''));
 $$;
 
@@ -109,11 +109,14 @@ create table if not exists public.pagamenti (
 
 alter table public.pagamenti enable row level security;
 drop policy if exists "pag leggi" on public.pagamenti;
-drop policy if exists "pag gestisci" on public.pagamenti;
+drop policy if exists "pag crea" on public.pagamenti;
+drop policy if exists "pag modifica" on public.pagamenti;
+drop policy if exists "pag elimina" on public.pagamenti;
 create policy "pag leggi" on public.pagamenti for select to authenticated
   using (e_admin() or mio_iscritto(iscritto_id));
-create policy "pag gestisci" on public.pagamenti for all to authenticated
-  using (e_admin()) with check (e_admin());
+create policy "pag crea" on public.pagamenti for insert to authenticated with check (e_admin());
+create policy "pag modifica" on public.pagamenti for update to authenticated using (e_admin()) with check (e_admin());
+create policy "pag elimina" on public.pagamenti for delete to authenticated using (e_admin());
 
 -- 5. Assenze (tutti risultano presenti salvo segnalazione) ----------------------
 create table if not exists public.assenze (
@@ -129,11 +132,15 @@ create index if not exists assenze_data_idx on public.assenze (data);
 alter table public.assenze enable row level security;
 drop policy if exists "ass leggi" on public.assenze;
 drop policy if exists "ass crea" on public.assenze;
+drop policy if exists "ass modifica" on public.assenze;
 drop policy if exists "ass elimina" on public.assenze;
 create policy "ass leggi" on public.assenze for select to authenticated
   using (e_admin() or mio_iscritto(iscritto_id));
 -- l'iscritto segnala/annulla solo le proprie assenze, da oggi in avanti
 create policy "ass crea" on public.assenze for insert to authenticated
+  with check (e_admin() or (mio_iscritto(iscritto_id) and data >= current_date));
+create policy "ass modifica" on public.assenze for update to authenticated
+  using (e_admin() or (mio_iscritto(iscritto_id) and data >= current_date))
   with check (e_admin() or (mio_iscritto(iscritto_id) and data >= current_date));
 create policy "ass elimina" on public.assenze for delete to authenticated
   using (e_admin() or (mio_iscritto(iscritto_id) and data >= current_date));
@@ -148,10 +155,13 @@ create table if not exists public.annullamenti (
 
 alter table public.annullamenti enable row level security;
 drop policy if exists "ann leggi" on public.annullamenti;
-drop policy if exists "ann gestisci" on public.annullamenti;
+drop policy if exists "ann crea" on public.annullamenti;
+drop policy if exists "ann modifica" on public.annullamenti;
+drop policy if exists "ann elimina" on public.annullamenti;
 create policy "ann leggi" on public.annullamenti for select to authenticated using (true);
-create policy "ann gestisci" on public.annullamenti for all to authenticated
-  using (e_admin()) with check (e_admin());
+create policy "ann crea" on public.annullamenti for insert to authenticated with check (e_admin());
+create policy "ann modifica" on public.annullamenti for update to authenticated using (e_admin()) with check (e_admin());
+create policy "ann elimina" on public.annullamenti for delete to authenticated using (e_admin());
 
 -- 7. Permessi di base -------------------------------------------------------------
 grant usage on schema public to authenticated;
@@ -160,6 +170,8 @@ grant select, update on public.impostazioni to authenticated;
 grant select, insert, update, delete on public.iscritti, public.pagamenti,
   public.assenze, public.annullamenti to authenticated;
 grant execute on function public.e_admin(), public.mia_email(), public.mio_iscritto(uuid) to authenticated;
+revoke execute on function public.e_admin(), public.mio_iscritto(uuid), public.nuovo_utente(), public.mia_email() from public, anon;
+revoke execute on function public.nuovo_utente() from authenticated;
 
 -- =====================================================================
 -- Aggiungere un altro amministratore (dopo che si è registrato nell'app):
