@@ -32,7 +32,7 @@
   const EYE_ON = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   const EYE_OFF = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6A17.3 17.3 0 0 0 2 12s3.6 7 10 7a9.9 9.9 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
   function pwField(attrs) {
-    return '<span class="pw-wrap"><input class="inp" type="password" ' + attrs + '><button type="button" class="pw-eye" aria-label="Mostra password" data-pweye>' + EYE_ON + '</button></span>';
+    return '<span class="pw-wrap"><input class="inp" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" ' + attrs + '><button type="button" class="pw-eye" aria-label="Mostra password" data-pweye>' + EYE_ON + '</button></span>';
   }
   function bindPw(root) {
     (root || document).querySelectorAll('[data-pweye]').forEach(b => b.onclick = () => {
@@ -171,7 +171,7 @@
           <div class="two"><label>Nome *<input class="inp" name="nome" autocomplete="given-name" maxlength="60" required></label>
           <label>Cognome *<input class="inp" name="cognome" autocomplete="family-name" maxlength="60" required></label></div>
           <label>Data di nascita *<input class="inp" type="date" name="nascita" max="${oggi}" min="1920-01-01" required></label>` : ''}
-          <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" id="email" autocomplete="username" required></label>
+          <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" id="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
           <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}${pwField('name="pw" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" minlength="6" required')}</label>
           ${DB.mode === 'online' ? `<label class="check"><input type="checkbox" name="ricorda"${DB.getRicorda() ? ' checked' : ''}> Resta collegato e memorizza la password</label>` : ''}
           ${reg ? `<label class="check priv"><input type="checkbox" name="privacy"> <span>Ho letto e accetto <button type="button" class="link inline" id="b-inf">l'informativa sulla privacy</button> e acconsento al trattamento dei miei dati per la gestione del Training Lab *</span></label>` : ''}
@@ -239,9 +239,25 @@
     };
     $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
   }
-  async function nuovaPassword() {
-    const pw = await askText('Nuova password', 'Scegli una nuova password (almeno 6 caratteri).', 'Nuova password', 'Salva', 'password');
-    if (pw && pw.length >= 6) await run(() => DB.updatePassword(pw), 'Password aggiornata').catch(() => {});
+  function nuovaPassword() {
+    return modal(`<h3>Nuova password</h3><p>Scegli una nuova password (almeno 6 caratteri) e scrivila due volte.</p>
+      <label>Nuova password${pwField('id="np1" autocomplete="new-password" maxlength="72"')}</label>
+      <label>Ripeti la password${pwField('id="np2" autocomplete="new-password" maxlength="72"')}</label>
+      <div class="m-row"><button class="btn ghost" data-close>Annulla</button><button class="btn primary" data-ok>Salva</button></div>`,
+      (w, close) => {
+        bindPw(w);
+        setTimeout(() => w.querySelector('#np1').focus(), 50);
+        w.querySelector('[data-ok]').onclick = async () => {
+          const a = w.querySelector('#np1').value, b = w.querySelector('#np2').value;
+          if (a.length < 6) return toast('La password deve avere almeno 6 caratteri', 'err');
+          if (a !== b) return toast('Le due password non coincidono', 'err');
+          try {
+            await DB.updatePassword(a);
+            if (DB.getRicorda && DB.getRicorda() && S.sess && S.sess.email) await memorizzaCredenziali(S.sess.email, a);
+            toast('Password aggiornata'); close(true);
+          } catch (e) { toast(e.message, 'err'); }
+        };
+      });
   }
   function renderNonAbilitato() {
     app.innerHTML = `<div class="center-msg">
@@ -471,7 +487,7 @@
       <p class="hint">Per correggere i tuoi dati scrivi all'amministratore.</p>
       <button class="link" data-inf>Informativa privacy</button></section>
       ${statoCards(me)}
-      ${DB.mode === 'online' ? `<button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
+      ${DB.mode === 'online' ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
       <p class="ver">Versione ${esc(window.APP_VERSION)}</p>`;
   }
 
@@ -655,7 +671,7 @@
         <button class="btn ghost wide" id="b-csv">Esporta elenco iscritti (CSV)</button>
         ${DB.mode === 'demo' ? `<button class="btn ghost wide" id="b-example">Carica iscritti di esempio</button><button class="btn danger-o wide" id="b-reset">Azzera la prova</button>
           <p class="hint">Modalità prova: per condividere i dati con gli iscritti collega Supabase (vedi README).</p>`
-          : `<button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>`}
+          : `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>`}
         <button class="btn ghost wide" data-inf>Informativa privacy</button>
         <p class="ver">S.C.T. TrainingLab · versione ${esc(window.APP_VERSION)}</p>
       </section>`;
@@ -766,6 +782,7 @@
     const c = $('#b-csv'); if (c) c.onclick = csv;
     const ex = $('#b-example'); if (ex) ex.onclick = async () => { DB.loadExample(); S.view = 'iscritti'; await carica(); refreshDemoList(); toast('Iscritti di esempio caricati'); };
     const rs = $('#b-reset'); if (rs) rs.onclick = async () => { if (await confirmBox('Azzerare la prova?', 'Tutti i dati di prova su questo dispositivo verranno cancellati.', 'Azzera')) { DB.reset(); location.reload(); } };
+    const cp = $('#b-pw'); if (cp) cp.onclick = () => nuovaPassword();
     const lo = $('#b-logout'); if (lo) lo.onclick = async () => { await DB.signOut(); S.view = null; carica(); };
   }
 

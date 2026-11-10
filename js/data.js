@@ -147,7 +147,8 @@
           [/already registered/i, 'Questa email è già registrata: accedi'],
           [/failed to fetch|network/i, 'Connessione assente: riprova quando sei online'],
           [/rate limit|too many/i, 'Troppi tentativi: riprova tra qualche minuto'],
-          [/password should be at least/i, 'La password deve avere almeno 6 caratteri']
+          [/password should be at least/i, 'La password deve avere almeno 6 caratteri'],
+          [/should be different from the old/i, 'La nuova password deve essere diversa dalla precedente']
         ].find(x => x[0].test(m));
         throw new Error(it ? it[1] : m);
       }
