@@ -1,1 +1,1 @@
-{ "version": "1.2.0", "date": "2026-11-10", "notes": ["Tasto per vedere la password mentre la scrivi", "Tocca una lezione per vedere chi sarà presente e chi assente (nome e iniziale del cognome)", "Informativa privacy aggiornata: va accettata di nuovo"] }
+{ "version": "1.3.0", "date": "2026-11-10", "notes": ["Resta collegato e memorizza la password: entri senza riscriverla", "Password salvata nel gestore password del telefono (Google / iCloud)"] }

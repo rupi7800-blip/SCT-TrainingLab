@@ -140,7 +140,16 @@
     function chk(r) {
       if (r.error) {
         const m = r.error.message || 'Errore';
-        throw new Error(/row-level security|permission/i.test(m) ? 'Operazione non consentita' : m);
+        const it = [
+          [/row-level security|permission/i, 'Operazione non consentita'],
+          [/invalid login credentials/i, 'Email o password errate'],
+          [/email not confirmed/i, 'Email non ancora confermata: apri il link che ti abbiamo mandato'],
+          [/already registered/i, 'Questa email è già registrata: accedi'],
+          [/failed to fetch|network/i, 'Connessione assente: riprova quando sei online'],
+          [/rate limit|too many/i, 'Troppi tentativi: riprova tra qualche minuto'],
+          [/password should be at least/i, 'La password deve avere almeno 6 caratteri']
+        ].find(x => x[0].test(m));
+        throw new Error(it ? it[1] : m);
       }
       return r.data;
     }
@@ -153,12 +162,25 @@
       return r;
     };
 
+    // "Ricordami": sessione salvata per sempre (localStorage) oppure solo finché il browser resta aperto
+    const RK = 'sct-ricordami';
+    const ricorda = () => { try { return localStorage.getItem(RK) !== '0'; } catch (e) { return true; } };
+    const authStorage = {
+      getItem(k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (e) { return null; } },
+      setItem(k, v) {
+        try {
+          if (ricorda()) { localStorage.setItem(k, v); sessionStorage.removeItem(k); }
+          else { sessionStorage.setItem(k, v); localStorage.removeItem(k); }
+        } catch (e) { /* niente memoria */ }
+      },
+      removeItem(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) {} }
+    };
     return {
       mode: 'online',
       async init() {
         await loadScript(CDN);
         sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: authStorage }
         });
       },
       onAuth(cb) { sb.auth.onAuthStateChange((ev, s) => cb(ev, s)); },
@@ -171,7 +193,12 @@
         chk(await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: location.href.split('#')[0].split('?')[0] }));
       },
       async updatePassword(password) { chk(await sb.auth.updateUser({ password })); },
-      async signOut() { await sb.auth.signOut(); },
+      setRicorda(v) { try { localStorage.setItem(RK, v ? '1' : '0'); } catch (e) {} },
+      getRicorda: ricorda,
+      async signOut() {
+        await sb.auth.signOut();
+        try { if (navigator.credentials && navigator.credentials.preventSilentAccess) await navigator.credentials.preventSilentAccess(); } catch (e) {}
+      },
       async session() {
         const { data } = await sb.auth.getSession();
         const s = data && data.session;

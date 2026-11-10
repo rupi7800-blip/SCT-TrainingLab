@@ -171,8 +171,9 @@
           <div class="two"><label>Nome *<input class="inp" name="nome" autocomplete="given-name" maxlength="60" required></label>
           <label>Cognome *<input class="inp" name="cognome" autocomplete="family-name" maxlength="60" required></label></div>
           <label>Data di nascita *<input class="inp" type="date" name="nascita" max="${oggi}" min="1920-01-01" required></label>` : ''}
-          <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" autocomplete="email" required></label>
+          <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" id="email" autocomplete="username" required></label>
           <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}${pwField('name="pw" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" minlength="6" required')}</label>
+          ${DB.mode === 'online' ? `<label class="check"><input type="checkbox" name="ricorda"${DB.getRicorda() ? ' checked' : ''}> Resta collegato e memorizza la password</label>` : ''}
           ${reg ? `<label class="check priv"><input type="checkbox" name="privacy"> <span>Ho letto e accetto <button type="button" class="link inline" id="b-inf">l'informativa sulla privacy</button> e acconsento al trattamento dei miei dati per la gestione del Training Lab *</span></label>` : ''}
           <button class="btn primary big" type="submit">${reg ? 'Registrati' : 'Accedi'}</button>
           <button class="btn ghost" type="button" id="b-mode">${reg ? 'Ho già un account: accedi' : 'Prima volta? Crea l\'account'}</button>
@@ -182,6 +183,7 @@
       </div>`;
     const f = $('#f-login');
     bindPw(f);
+    if (!reg && DB.mode === 'online') precompila(f);
     $('#b-mode').onclick = () => renderLogin(!reg);
     const inf = $('#b-inf'); if (inf) inf.onclick = e => { e.preventDefault(); informativa(); };
     f.onsubmit = async e => {
@@ -189,13 +191,16 @@
       const email = f.email.value.trim(), pw = f.pw.value;
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Inserisci un\'email valida', 'err');
       if (pw.length < 6) return toast('La password deve avere almeno 6 caratteri', 'err');
-      if (!reg) return run(() => DB.signIn(email, pw)).then(carica).catch(() => {});
+      const ric = f.ricorda ? f.ricorda.checked : true;
+      if (DB.setRicorda) DB.setRicorda(ric);
+      if (!reg) return run(() => DB.signIn(email, pw)).then(async () => { if (ric) await memorizzaCredenziali(email, pw); await carica(); }).catch(() => {});
       const nome = f.nome.value.trim(), cognome = f.cognome.value.trim(), nascita = f.nascita.value;
       if (!nome || !cognome) return toast('Inserisci nome e cognome', 'err');
       if (!nascita || nascita > oggi || nascita < '1920-01-01') return toast('Inserisci una data di nascita valida', 'err');
       if (!f.privacy.checked) return toast('Per registrarti devi accettare l\'informativa privacy', 'err');
       try {
         const r = await DB.signUp(email, pw, { nome, cognome, data_nascita: nascita, privacy_versione: window.PRIVACY.VERSIONE });
+        if (ric) await memorizzaCredenziali(email, pw);
         if (r.needsConfirm) { toast('Ti abbiamo inviato una mail: conferma l\'indirizzo e poi accedi'); renderLogin(false); }
         else await carica();
       } catch (er) { toast(/already registered/i.test(er.message) ? 'Questa email è già registrata: accedi' : er.message, 'err'); }
@@ -205,6 +210,19 @@
       if (!f.email.value) return toast('Scrivi prima la tua email', 'err');
       await run(() => DB.resetPassword(f.email.value), 'Mail per reimpostare la password inviata').catch(() => {});
     };
+  }
+  async function memorizzaCredenziali(email, pw) {
+    try {
+      if (window.PasswordCredential && navigator.credentials && navigator.credentials.store)
+        await navigator.credentials.store(new window.PasswordCredential({ id: email, password: pw, name: email }));
+    } catch (e) { /* il browser non lo supporta: ci pensa il suo gestore password */ }
+  }
+  async function precompila(f) {
+    try {
+      if (!window.PasswordCredential || !navigator.credentials || !DB.getRicorda()) return;
+      const c = await navigator.credentials.get({ password: true, mediation: 'optional' });
+      if (c && c.password && f.isConnected && !f.email.value) { f.email.value = c.id; f.pw.value = c.password; }
+    } catch (e) { /* niente credenziali salvate */ }
   }
   function renderPrivacyGate() {
     const P = window.PRIVACY;
