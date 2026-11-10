@@ -24,6 +24,8 @@
   function fmtLong(s) { const d = parse(s); return GIORNI[d.getDay()] + ' ' + d.getDate() + ' ' + MESI[d.getMonth()].toLowerCase(); }
   function nomeCompleto(i) { return (i.nome + ' ' + (i.cognome || '')).trim(); }
   function iniziali(i) { return ((i.nome || '?')[0] + ((i.cognome || '')[0] || '')).toUpperCase(); }
+  function eta(dn) { if (!dn) return null; const t = parse(today()), n = parse(dn); let a = t.getFullYear() - n.getFullYear(); if (t.getMonth() < n.getMonth() || (t.getMonth() === n.getMonth() && t.getDate() < n.getDate())) a--; return a; }
+  function consensoDi(email) { if (!email) return null; const e = email.toLowerCase(); return (S.d.consensi || []).filter(c => (c.email || '').toLowerCase() === e).sort((a, b) => b.accettato_il.localeCompare(a.accettato_il))[0] || null; }
   function meseCorrente() { return today().slice(0, 7); }
   function nomeMese(m) { const [y, mm] = m.split('-').map(Number); return MESI[mm - 1] + ' ' + y; }
 
@@ -128,6 +130,7 @@
     try {
       S.sess = await DB.session();
       if (S.sess.role === 'anon') return renderLogin();
+      if (S.sess.role === 'privacy') return renderPrivacyGate();
       if (S.sess.role === 'non_abilitato') return renderNonAbilitato();
       S.d = await DB.loadAll();
       if (!S.view) S.view = S.sess.role === 'admin' ? 'cal' : 'lezioni';
@@ -139,37 +142,69 @@
   async function ricarica() { S.d = await DB.loadAll(); if (S.sess.role === 'iscritto') S.sess = await DB.session(); render(); }
 
   /* ------------------------------------------------------------- accesso */
-  function renderLogin() {
+  function informativa() {
+    const P = window.PRIVACY;
+    return modal('<h3>Informativa privacy</h3><div class="privacy-txt">' + P.testo() + '</div><div class="m-row"><button class="btn primary" data-close>Ho capito</button></div>');
+  }
+  function renderLogin(reg) {
+    const oggi = today();
     app.innerHTML = `
       <div class="login">
         <img src="icons/logo.png" alt="Sci Club Taino Training Lab" class="login-logo">
-        <form id="f-login" class="card">
-          <h2>Accedi</h2>
-          <label>Email<input class="inp" type="email" name="email" autocomplete="email" required></label>
-          <label>Password<input class="inp" type="password" name="pw" autocomplete="current-password" minlength="6" required></label>
-          <button class="btn primary big" type="submit">Accedi</button>
-          <button class="btn ghost" type="button" id="b-reg">Prima volta? Crea l'account</button>
-          <button class="link" type="button" id="b-forgot">Password dimenticata</button>
+        <form id="f-login" class="card" novalidate>
+          <h2>${reg ? 'Crea il tuo account' : 'Accedi'}</h2>
+          ${reg ? `
+          <div class="two"><label>Nome *<input class="inp" name="nome" autocomplete="given-name" maxlength="60" required></label>
+          <label>Cognome *<input class="inp" name="cognome" autocomplete="family-name" maxlength="60" required></label></div>
+          <label>Data di nascita *<input class="inp" type="date" name="nascita" max="${oggi}" min="1920-01-01" required></label>` : ''}
+          <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" autocomplete="email" required></label>
+          <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}<input class="inp" type="password" name="pw" autocomplete="${reg ? 'new-password' : 'current-password'}" minlength="6" required></label>
+          ${reg ? `<label class="check priv"><input type="checkbox" name="privacy"> <span>Ho letto e accetto <button type="button" class="link inline" id="b-inf">l'informativa sulla privacy</button> e acconsento al trattamento dei miei dati per la gestione del Training Lab *</span></label>` : ''}
+          <button class="btn primary big" type="submit">${reg ? 'Registrati' : 'Accedi'}</button>
+          <button class="btn ghost" type="button" id="b-mode">${reg ? 'Ho già un account: accedi' : 'Prima volta? Crea l\'account'}</button>
+          ${reg ? '' : '<button class="link" type="button" id="b-forgot">Password dimenticata</button>'}
           <p class="hint">Iscritti: usate la stessa email che avete comunicato al Training Lab.</p>
         </form>
       </div>`;
     const f = $('#f-login');
+    $('#b-mode').onclick = () => renderLogin(!reg);
+    const inf = $('#b-inf'); if (inf) inf.onclick = e => { e.preventDefault(); informativa(); };
     f.onsubmit = async e => {
       e.preventDefault();
-      await run(() => DB.signIn(f.email.value, f.pw.value)).then(carica).catch(() => {});
-    };
-    $('#b-reg').onclick = async () => {
-      if (!f.email.value || f.pw.value.length < 6) return toast('Inserisci email e una password di almeno 6 caratteri', 'err');
+      const email = f.email.value.trim(), pw = f.pw.value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Inserisci un\'email valida', 'err');
+      if (pw.length < 6) return toast('La password deve avere almeno 6 caratteri', 'err');
+      if (!reg) return run(() => DB.signIn(email, pw)).then(carica).catch(() => {});
+      const nome = f.nome.value.trim(), cognome = f.cognome.value.trim(), nascita = f.nascita.value;
+      if (!nome || !cognome) return toast('Inserisci nome e cognome', 'err');
+      if (!nascita || nascita > oggi || nascita < '1920-01-01') return toast('Inserisci una data di nascita valida', 'err');
+      if (!f.privacy.checked) return toast('Per registrarti devi accettare l\'informativa privacy', 'err');
       try {
-        const r = await DB.signUp(f.email.value, f.pw.value);
-        if (r.needsConfirm) toast('Ti abbiamo inviato una mail: conferma l\'indirizzo e poi accedi');
+        const r = await DB.signUp(email, pw, { nome, cognome, data_nascita: nascita, privacy_versione: window.PRIVACY.VERSIONE });
+        if (r.needsConfirm) { toast('Ti abbiamo inviato una mail: conferma l\'indirizzo e poi accedi'); renderLogin(false); }
         else await carica();
-      } catch (er) { toast(er.message, 'err'); }
+      } catch (er) { toast(/already registered/i.test(er.message) ? 'Questa email è già registrata: accedi' : er.message, 'err'); }
     };
-    $('#b-forgot').onclick = async () => {
+    const fg = $('#b-forgot');
+    if (fg) fg.onclick = async () => {
       if (!f.email.value) return toast('Scrivi prima la tua email', 'err');
       await run(() => DB.resetPassword(f.email.value), 'Mail per reimpostare la password inviata').catch(() => {});
     };
+  }
+  function renderPrivacyGate() {
+    const P = window.PRIVACY;
+    app.innerHTML = `<div class="login"><img src="icons/logo.png" class="login-logo" alt="">
+      <div class="card gate"><h2>Informativa privacy</h2>
+        <p class="muted">Per usare l'app devi leggere e accettare l'informativa sul trattamento dei dati.</p>
+        <div class="privacy-txt">${P.testo()}</div>
+        <label class="check priv"><input type="checkbox" id="c-priv"> <span>Ho letto e accetto l'informativa e acconsento al trattamento dei miei dati per la gestione del Training Lab</span></label>
+        <button class="btn primary big" id="b-acc">Accetta e continua</button>
+        <button class="btn ghost" id="b-out">Esci</button></div></div>`;
+    $('#b-acc').onclick = async () => {
+      if (!$('#c-priv').checked) return toast('Spunta la casella per accettare', 'err');
+      await run(() => DB.accettaPrivacy(S.sess.uid, S.sess.email)).then(carica).catch(() => {});
+    };
+    $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
   }
   async function nuovaPassword() {
     const pw = await askText('Nuova password', 'Scegli una nuova password (almeno 6 caratteri).', 'Nuova password', 'Salva');
@@ -179,7 +214,7 @@
     app.innerHTML = `<div class="center-msg">
       <img src="icons/logo.png" class="login-logo" alt="">
       <h2>Account non ancora abilitato</h2>
-      <p>L'email <b>${esc(S.sess.email)}</b> non risulta tra gli iscritti del Training Lab.<br>Chiedi all'amministratore di inserirla nella tua scheda, poi riprova.</p>
+      <p>Registrazione ricevuta! L'email <b>${esc(S.sess.email)}</b> non è ancora collegata a una scheda del Training Lab.<br>L'amministratore vede la tua richiesta e ti abiliterà a breve: poi tocca "Riprova".</p>
       <div class="m-row"><button class="btn ghost" id="b-out">Esci</button><button class="btn primary" id="b-retry">Riprova</button></div></div>`;
     $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
     $('#b-retry').onclick = carica;
@@ -360,12 +395,14 @@
     return `<section class="card pad">
       <div class="sch-head"><span class="av big">${esc(iniziali(me))}</span><div><h2>${esc(nomeCompleto(me))}</h2><p class="muted">${esc(lezioniTesto(me))}</p></div></div>
       <dl class="info">
+        <dt>Data di nascita</dt><dd>${fmt(me.data_nascita)}</dd>
         <dt>Telefono</dt><dd>${esc(me.telefono || '—')}</dd>
         <dt>Email</dt><dd>${esc(me.email || '—')}</dd>
         <dt>Iscritto dal</dt><dd>${fmt(me.data_iscrizione)}</dd>
         <dt>Certificato</dt><dd>${me.certificato_tipo === 'agonistico' ? 'Agonistico' : 'Non agonistico'} · scade ${fmt(me.certificato_scadenza)}</dd>
       </dl>
-      <p class="hint">Per correggere i tuoi dati scrivi all'amministratore.</p></section>
+      <p class="hint">Per correggere i tuoi dati scrivi all'amministratore.</p>
+      <button class="link" data-inf>Informativa privacy</button></section>
       ${statoCards(me)}
       ${DB.mode === 'online' ? `<button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
       <p class="ver">Versione ${esc(window.APP_VERSION)}</p>`;
@@ -387,7 +424,13 @@
     if (S.filtro === 'inattivi') list = list.filter(i => i.attivo === false);
     else if (S.filtro !== 'tutti') { /* già filtrati */ } else list = list.filter(i => i.attivo !== false);
     const f = (k, t, n) => `<button class="chip${S.filtro === k ? ' on' : ''}" data-filtro="${k}">${t}${n != null ? ' <b>' + n + '</b>' : ''}</button>`;
-    return `
+    const emails = new Set(all.map(i => (i.email || '').toLowerCase()).filter(Boolean));
+    const nuove = (S.d.registrazioni || []).filter(r => r.email && !emails.has(r.email.toLowerCase()) && r.email.toLowerCase() !== (S.sess.email || ''));
+    const reqHtml = nuove.length ? `<section class="card pad req"><h3 class="sec-t">Nuove registrazioni da abilitare · ${nuove.length}</h3>
+      <ul class="rlist">${nuove.map(r => `<li><span class="inf"><b>${esc((r.cognome + ' ' + r.nome).trim() || r.email)}</b><small>${esc(r.email)}${r.data_nascita ? ' · nato/a il ' + fmt(r.data_nascita) : ''}</small></span>
+      <button class="btn sm primary" data-reg="${esc(r.user_id)}">Crea scheda</button></li>`).join('')}</ul>
+      <p class="hint">Si sono registrati nell'app ma non hanno ancora una scheda: creala e potranno entrare.</p></section>` : '';
+    return reqHtml + `
       <div class="search"><input class="inp" id="q" type="search" placeholder="Cerca per nome, telefono, email…" value="${esc(S.q)}"></div>
       <div class="chips">${f('tutti', 'Attivi', all.filter(i => i.attivo !== false).length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Non attivi')}</div>
       <div class="legend l2"><span><i class="dot green">C</i>Certificato</span><span><i class="dot green">I</i>Iscrizione</span><span><i class="dot green">Q</i>Quota mese</span></div>
@@ -416,12 +459,13 @@
     return out;
   }
 
-  function openScheda(id) {
+  function openScheda(id, prefill) {
     const st = S.d.settings;
     const i = id ? JSON.parse(JSON.stringify(S.d.iscritti.find(x => x.id === id))) : {
       nome: '', cognome: '', telefono: '', email: '', data_iscrizione: today(), scadenza_iscrizione: st.stagione_fine,
-      certificato_scadenza: '', certificato_tipo: 'non_agonistico', lezioni: st.slots.map(s => s.id), attivo: true, note: ''
+      certificato_scadenza: '', certificato_tipo: 'non_agonistico', lezioni: st.slots.map(s => s.id), attivo: true, note: '', data_nascita: ''
     };
+    if (!id && prefill) Object.assign(i, prefill);
     if (!i) return;
     S.scheda = i;
     const w = document.createElement('div');
@@ -442,11 +486,13 @@
             <a class="cbtn${tel ? '' : ' off'}" href="${tel ? 'tel:' + esc(tel) : '#'}">${ic('tel')}<span>Chiama</span></a>
             <a class="cbtn wa${tel ? '' : ' off'}" href="${tel ? 'https://wa.me/' + esc(waNumber(i.telefono)) : '#'}" target="_blank" rel="noopener">${WA}<span>WhatsApp</span></a>
             <a class="cbtn${i.email ? '' : ' off'}" href="${i.email ? 'mailto:' + esc(i.email) : '#'}">${ic('mail')}<span>Mail</span></a>
-          </div>${statoCards(i)}` : ''}
+          </div>${statoCards(i)}
+          <p class="privline">${(() => { const c = consensoDi(i.email); return DB.mode === 'demo' ? '' : c ? '🔒 Privacy accettata il ' + fmt(c.accettato_il.slice(0, 10)) + ' (v. ' + esc(c.versione) + ')' : '🔒 Privacy: non ancora accettata (l\'iscritto non si è ancora registrato nell\'app)'; })()}</p>` : ''}
           <form id="f-sch" class="form">
             <h3 class="sec-t">Anagrafica</h3>
             <div class="two"><label>Nome *<input class="inp" name="nome" required maxlength="60" value="${esc(i.nome)}"></label>
             <label>Cognome<input class="inp" name="cognome" maxlength="60" value="${esc(i.cognome)}"></label></div>
+            <label>Data di nascita${i.data_nascita && eta(i.data_nascita) != null ? ' <small class="muted">(' + eta(i.data_nascita) + ' anni)</small>' : ''}<input class="inp" type="date" name="data_nascita" max="${today()}" value="${esc(i.data_nascita || '')}"></label>
             <label>Telefono<input class="inp" name="telefono" type="tel" maxlength="30" placeholder="es. 347 1234567" value="${esc(i.telefono || '')}"></label>
             <label>Email<input class="inp" name="email" type="email" maxlength="120" value="${esc(i.email || '')}"><small class="hint">Serve all'iscritto per accedere all'app e segnalare le assenze.</small></label>
 
@@ -480,7 +526,7 @@
       const f = w.querySelector('#f-sch');
       const sync = () => {
         const fd = new FormData(f);
-        ['nome', 'cognome', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione', 'certificato_tipo', 'certificato_scadenza', 'note'].forEach(k => i[k] = (fd.get(k) || '').toString().trim());
+        ['nome', 'cognome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione', 'certificato_tipo', 'certificato_scadenza', 'note'].forEach(k => i[k] = (fd.get(k) || '').toString().trim());
         i.attivo = f.attivo.checked;
       };
       w.querySelector('[data-x]').onclick = close;
@@ -543,6 +589,7 @@
         ${DB.mode === 'demo' ? `<button class="btn ghost wide" id="b-example">Carica iscritti di esempio</button><button class="btn danger-o wide" id="b-reset">Azzera la prova</button>
           <p class="hint">Modalità prova: per condividere i dati con gli iscritti collega Supabase (vedi README).</p>`
           : `<button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>`}
+        <button class="btn ghost wide" data-inf>Informativa privacy</button>
         <p class="ver">S.C.T. TrainingLab · versione ${esc(window.APP_VERSION)}</p>
       </section>`;
   }
@@ -616,6 +663,11 @@
     if (q) q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('#q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} };
     main.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => { S.filtro = S.filtro === b.dataset.filtro ? 'tutti' : b.dataset.filtro; render(); });
     const nb = $('#b-new'); if (nb) nb.onclick = () => openScheda(null);
+    main.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => informativa());
+    main.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => {
+      const r = (S.d.registrazioni || []).find(x => x.user_id === b.dataset.reg);
+      if (r) openScheda(null, { nome: r.nome, cognome: r.cognome, email: r.email, data_nascita: r.data_nascita || '' });
+    });
 
     // impostazioni
     const add = $('#b-addslot');

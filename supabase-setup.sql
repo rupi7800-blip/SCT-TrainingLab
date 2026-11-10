@@ -178,3 +178,71 @@ revoke execute on function public.nuovo_utente() from authenticated;
 --   insert into public.amministratori (user_id, email)
 --   select id, email from auth.users where lower(email) = lower('mail@esempio.it');
 -- =====================================================================
+
+-- =====================================================================
+-- v1.1 · Registrazione con nome, cognome, data di nascita e consenso privacy
+-- =====================================================================
+alter table public.iscritti add column if not exists data_nascita date;
+
+create table if not exists public.registrazioni (
+  user_id      uuid primary key references auth.users(id) on delete cascade,
+  email        text not null,
+  nome         text not null default '' check (char_length(nome) <= 60),
+  cognome      text not null default '' check (char_length(cognome) <= 60),
+  data_nascita date,
+  creato       timestamptz not null default now()
+);
+alter table public.registrazioni enable row level security;
+drop policy if exists "reg leggi" on public.registrazioni;
+drop policy if exists "reg crea" on public.registrazioni;
+drop policy if exists "reg modifica" on public.registrazioni;
+create policy "reg leggi" on public.registrazioni for select to authenticated
+  using (user_id = (select auth.uid()) or e_admin());
+create policy "reg crea" on public.registrazioni for insert to authenticated
+  with check (user_id = (select auth.uid()) and lower(email) = mia_email());
+create policy "reg modifica" on public.registrazioni for update to authenticated
+  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()) and lower(email) = mia_email());
+grant select, insert, update on public.registrazioni to authenticated;
+
+create table if not exists public.consensi_privacy (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  email        text not null,
+  versione     text not null check (char_length(versione) <= 20),
+  accettato_il timestamptz not null default now(),
+  primary key (user_id, versione)
+);
+alter table public.consensi_privacy enable row level security;
+drop policy if exists "cons leggi" on public.consensi_privacy;
+drop policy if exists "cons crea" on public.consensi_privacy;
+create policy "cons leggi" on public.consensi_privacy for select to authenticated
+  using (user_id = (select auth.uid()) or e_admin());
+create policy "cons crea" on public.consensi_privacy for insert to authenticated
+  with check (user_id = (select auth.uid()) and lower(email) = mia_email());
+grant select, insert on public.consensi_privacy to authenticated;
+
+-- alla registrazione: primo account = amministratore, salva dati e consenso
+create or replace function public.nuovo_utente() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  m jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  dn date;
+begin
+  if not exists (select 1 from amministratori) then
+    insert into amministratori (user_id, email) values (new.id, new.email) on conflict do nothing;
+  end if;
+  begin dn := nullif(m->>'data_nascita', '')::date; exception when others then dn := null; end;
+  insert into registrazioni (user_id, email, nome, cognome, data_nascita)
+  values (new.id, lower(new.email), left(coalesce(m->>'nome', ''), 60), left(coalesce(m->>'cognome', ''), 60), dn)
+  on conflict (user_id) do nothing;
+  if coalesce(m->>'privacy_versione', '') <> '' then
+    insert into consensi_privacy (user_id, email, versione, accettato_il)
+    values (new.id, lower(new.email), left(m->>'privacy_versione', 20), now())
+    on conflict do nothing;
+  end if;
+  if dn is not null then
+    update iscritti set data_nascita = dn
+    where lower(email) = lower(new.email) and data_nascita is null;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.nuovo_utente() from public, anon, authenticated;

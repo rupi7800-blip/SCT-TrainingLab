@@ -220,3 +220,17 @@ label .inp { margin-top: 5px; }
 .toast.out { opacity: 0; transform: translate(-50%, 10px); }
 [data-update-slot] .upd-btn { padding: 7px 12px; font-size: 13px; }
 .nw { white-space: nowrap; }
+.privacy-txt { max-height: 46vh; overflow-y: auto; font-size: 13.5px; color: var(--ink2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px; margin: 8px 0; text-align: left; }
+.privacy-txt h4 { margin: 10px 0 2px; font-size: 13.5px; color: var(--ink); }
+.privacy-txt p { margin: 0 0 6px; }
+.check.priv { align-items: flex-start; font-weight: 500; font-size: 13.5px; line-height: 1.4; }
+.check.priv input { margin-top: 1px; }
+.link.inline { padding: 0; font-size: inherit; text-decoration: underline; }
+.gate { width: 100%; max-width: 480px; padding: 20px; text-align: left; display: flex; flex-direction: column; gap: 8px; }
+.req { border: 2px solid var(--red); }
+.rlist { list-style: none; margin: 0; padding: 0; }
+.rlist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.rlist li:first-child { border-top: 0; }
+.rlist .inf { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rlist small { color: var(--muted); font-size: 12px; word-break: break-all; }
+.privline { font-size: 13px; color: var(--ink2); margin: 0 2px 12px; }

@@ -1,1 +1,1 @@
-{ "version": "1.0.1", "date": "2026-11-10", "notes": ["App collegata al database online: dati condivisi tra amministratore e iscritti"] }
+{ "version": "1.1.0", "date": "2026-11-10", "notes": ["Registrazione con nome, cognome e data di nascita", "Accettazione obbligatoria dell'informativa privacy, registrata con la data", "Nuove registrazioni da abilitare nella sezione Iscritti", "Data di nascita ed età nella scheda iscritto"] }

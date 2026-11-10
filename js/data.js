@@ -56,7 +56,7 @@
           iscritti: mem.vista === 'admin' ? mem.iscritti : mem.iscritti.filter(i => i.id === mem.vista),
           pagamenti: mem.vista === 'admin' ? mem.pagamenti : mem.pagamenti.filter(p => p.iscritto_id === mem.vista),
           assenze: mem.vista === 'admin' ? mem.assenze : mem.assenze.filter(a => a.iscritto_id === mem.vista),
-          annullamenti: mem.annullamenti
+          annullamenti: mem.annullamenti, registrazioni: [], consensi: []
         });
       },
       async saveSettings(s) { mem.settings = s; save(); return ok(s); },
@@ -64,6 +64,10 @@
         if (!o.id) { o.id = uid(); o.creato = new Date().toISOString(); mem.iscritti.push(o); }
         else { const i = mem.iscritti.findIndex(x => x.id === o.id); if (i >= 0) mem.iscritti[i] = Object.assign(mem.iscritti[i], o); }
         save(); return ok(o);
+      },
+      async accettaPrivacy(uid, email) {
+        const P = window.PRIVACY || { VERSIONE: '1.0' };
+        chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
       async deleteIscritto(id) {
         mem.iscritti = mem.iscritti.filter(x => x.id !== id);
@@ -135,7 +139,7 @@
       return r.data;
     }
     const clean = o => {
-      const keys = ['nome', 'cognome', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
+      const keys = ['nome', 'cognome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
         'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'note'];
       const r = {}; keys.forEach(k => { r[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
       r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false;
@@ -153,8 +157,8 @@
       },
       onAuth(cb) { sb.auth.onAuthStateChange((ev, s) => cb(ev, s)); },
       async signIn(email, password) { chk(await sb.auth.signInWithPassword({ email: email.trim(), password })); },
-      async signUp(email, password) {
-        const d = chk(await sb.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: location.href.split('#')[0].split('?')[0] } }));
+      async signUp(email, password, meta) {
+        const d = chk(await sb.auth.signUp({ email: email.trim(), password, options: { data: meta || {}, emailRedirectTo: location.href.split('#')[0].split('?')[0] } }));
         return { needsConfirm: !d.session };
       },
       async resetPassword(email) {
@@ -167,6 +171,9 @@
         const s = data && data.session;
         if (!s) return { role: 'anon' };
         const email = (s.user.email || '').toLowerCase();
+        const P = window.PRIVACY || { VERSIONE: '1.0' };
+        const cons = chk(await sb.from('consensi_privacy').select('versione').eq('user_id', s.user.id).eq('versione', P.VERSIONE).maybeSingle());
+        if (!cons) return { role: 'privacy', email, uid: s.user.id };
         const adm = chk(await sb.from('amministratori').select('user_id').eq('user_id', s.user.id).maybeSingle());
         if (adm) return { role: 'admin', email };
         const isc = chk(await sb.from('iscritti').select('*').limit(1));
@@ -175,16 +182,18 @@
       },
       async loadAll() {
         const from = new Date(); from.setDate(from.getDate() - 400);
-        const [imp, isc, pag, ass, ann] = await Promise.all([
+        const [imp, isc, pag, ass, ann, reg, con] = await Promise.all([
           sb.from('impostazioni').select('dati').eq('id', 1).maybeSingle(),
           sb.from('iscritti').select('*').order('cognome').order('nome'),
           sb.from('pagamenti').select('*'),
           sb.from('assenze').select('*').gte('data', ymd(from)),
-          sb.from('annullamenti').select('*')
+          sb.from('annullamenti').select('*'),
+          sb.from('registrazioni').select('*').order('creato', { ascending: false }),
+          sb.from('consensi_privacy').select('email,versione,accettato_il')
         ]);
         return {
           settings: withDefaults(chk(imp) && chk(imp).dati),
-          iscritti: chk(isc) || [], pagamenti: chk(pag) || [], assenze: chk(ass) || [], annullamenti: chk(ann) || []
+          iscritti: chk(isc) || [], pagamenti: chk(pag) || [], assenze: chk(ass) || [], annullamenti: chk(ann) || [], registrazioni: chk(reg) || [], consensi: chk(con) || []
         };
       },
       async saveSettings(s) {
@@ -195,6 +204,10 @@
         const row = clean(o);
         if (o.id) return chk(await sb.from('iscritti').update(row).eq('id', o.id).select().single());
         return chk(await sb.from('iscritti').insert(row).select().single());
+      },
+      async accettaPrivacy(uid, email) {
+        const P = window.PRIVACY || { VERSIONE: '1.0' };
+        chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
       async deleteIscritto(id) { chk(await sb.from('iscritti').delete().eq('id', id)); },
       async setPagamento(iscritto_id, mese, pagato, importo) {
