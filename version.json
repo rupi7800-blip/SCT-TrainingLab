@@ -1,1 +1,1 @@
-{ "version": "1.8.2", "date": "2026-11-11", "notes": ["Tasto Aggiorna sempre visibile quando c'è una nuova versione", "Pulsante Controlla aggiornamenti nel Profilo e nelle Impostazioni", "Eventi: nomi dei partecipanti nel riquadro dell'evento", "Avvisi quote del mese e stato registrazione (amministratore)"] }
+{ "version": "1.8.3", "date": "2026-11-11", "notes": ["Sblocco automatico dei telefoni fermi a una versione vecchia", "Tasto Aggiorna sempre visibile", "Eventi: nomi dei partecipanti nel riquadro dell'evento"] }
