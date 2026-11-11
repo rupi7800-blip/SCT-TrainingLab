@@ -343,3 +343,9 @@ label .inp { margin-top: 5px; }
 .mchip.on { background: var(--red-l); color: var(--red-d); }
 .m-off { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: #eceef1; color: var(--ink2); font-weight: 600; font-size: 13.5px; text-align: center; }
 .modal .alert-b { margin: 8px 0 0; }
+
+.inst { border: 2px solid var(--red-l); }
+.inst p { margin: 4px 0 8px; font-size: 14px; color: var(--ink2); }
+.inst[hidden] { display: none; }
+.ios-sh { display: inline-block; border: 1.5px solid currentColor; border-radius: 5px; padding: 0 4px; font-size: 12px; }
+.login-inst { width: 100%; max-width: 380px; margin-top: 12px; text-align: left; }

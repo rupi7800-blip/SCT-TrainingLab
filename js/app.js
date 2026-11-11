@@ -221,6 +221,26 @@
     S.sess = S.realSess; S.realSess = null; S.view = 'imp'; render(); window.scrollTo(0, 0);
   }
 
+
+  /* --------------------------------------------------- installazione dell'app */
+  let promptInstall = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptInstall = e; document.querySelectorAll('[data-install]').forEach(x => x.hidden = false); });
+  window.addEventListener('appinstalled', () => { promptInstall = null; document.querySelectorAll('[data-install]').forEach(x => x.hidden = true); toast('App installata sulla schermata Home'); });
+  function installata() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+  function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function installHtml() {
+    if (installata()) return '';
+    if (isIOS()) return `<div class="inst card pad"><b>📲 Installa l'app sull'iPhone</b><p>In <b>Safari</b> tocca <b>Condividi</b> <span class="ios-sh">⬆︎</span> e poi <b>“Aggiungi alla schermata Home”</b>.</p></div>`;
+    return `<div class="inst card pad" data-install ${promptInstall ? '' : 'hidden'}><b>📲 Installa l'app sul telefono</b><p>Avrai l'icona del Training Lab sulla schermata Home.</p><button type="button" class="btn primary sm" data-doinstall>Installa</button></div>`;
+  }
+  async function doInstall() {
+    if (!promptInstall) return toast('Apri il menu ⋮ di Chrome e scegli "Installa app"');
+    promptInstall.prompt();
+    try { await promptInstall.userChoice; } catch (e) {}
+    promptInstall = null;
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-doinstall]')) doInstall(); });
+
   /* ------------------------------------------------------------- accesso */
   function informativa() {
     const P = window.PRIVACY;
@@ -247,6 +267,7 @@
           ${reg ? '' : '<button class="link" type="button" id="b-forgot">Password dimenticata</button>'}
           <p class="hint">Iscritti: usate la stessa email che avete comunicato al Training Lab.</p>
         </form>
+        <div class="login-inst">${installHtml()}</div>
       </div>`;
     const f = $('#f-login');
     bindPw(f);
@@ -791,7 +812,7 @@
       ds = addDays(ds, 1);
     }
     const bd = compleannoIl(me.data_nascita, today());
-    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}${bannerCertificati()}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
+    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}${bannerCertificati()}${installHtml()}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
       <p class="muted">Risulti sempre presente: se non puoi venire, segnala l'assenza.</p></section>
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
@@ -832,6 +853,7 @@
       </form>
       ${statoCards(me)}
       ${quoteGrid(me)}
+      ${installHtml()}
       ${DB.mode === 'online' && !S.sess.anteprima ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
       <p class="ver">Versione ${esc(window.APP_VERSION)}</p>`;
   }
