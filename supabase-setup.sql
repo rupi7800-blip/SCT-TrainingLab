@@ -379,3 +379,54 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public.presenze_lezione_v2(date, text) from public, anon;
 grant execute on function public.presenze_lezione_v2(date, text) to authenticated;
+
+-- =====================================================================
+-- v1.6 · Avvisi, collegamento automatico alla registrazione, dati riservati
+-- (vedi migrazione "avvisi_collegamento_privacy" applicata al progetto)
+-- =====================================================================
+create table if not exists public.avvisi (
+  id                    uuid primary key default gen_random_uuid(),
+  per_admin             boolean not null default false,
+  destinatario_iscritto uuid references public.iscritti(id) on delete cascade,
+  iscritto_id           uuid references public.iscritti(id) on delete cascade,
+  tipo                  text not null,
+  titolo                text not null,
+  testo                 text,
+  chiave                text unique,
+  letto                 boolean not null default false,
+  creato                timestamptz not null default now(),
+  check (per_admin or destinatario_iscritto is not null)
+);
+create index if not exists avvisi_dest_idx on public.avvisi (destinatario_iscritto);
+alter table public.avvisi enable row level security;
+drop policy if exists "avv leggi" on public.avvisi;
+drop policy if exists "avv letto" on public.avvisi;
+drop policy if exists "avv elimina" on public.avvisi;
+create policy "avv leggi" on public.avvisi for select to authenticated
+  using ((per_admin and e_admin()) or (destinatario_iscritto is not null and mio_iscritto(destinatario_iscritto)));
+create policy "avv letto" on public.avvisi for update to authenticated
+  using ((per_admin and e_admin()) or (destinatario_iscritto is not null and mio_iscritto(destinatario_iscritto)))
+  with check ((per_admin and e_admin()) or (destinatario_iscritto is not null and mio_iscritto(destinatario_iscritto)));
+create policy "avv elimina" on public.avvisi for delete to authenticated using (per_admin and e_admin());
+grant select, delete on public.avvisi to authenticated;
+grant update (letto) on public.avvisi to authenticated;
+
+create table if not exists public.note_iscritti (
+  iscritto_id uuid primary key references public.iscritti(id) on delete cascade,
+  note        text check (note is null or char_length(note) <= 1000),
+  aggiornato  timestamptz not null default now()
+);
+alter table public.note_iscritti enable row level security;
+drop policy if exists "note leggi" on public.note_iscritti;
+drop policy if exists "note crea" on public.note_iscritti;
+drop policy if exists "note modifica" on public.note_iscritti;
+drop policy if exists "note elimina" on public.note_iscritti;
+create policy "note leggi" on public.note_iscritti for select to authenticated using (e_admin());
+create policy "note crea" on public.note_iscritti for insert to authenticated with check (e_admin());
+create policy "note modifica" on public.note_iscritti for update to authenticated using (e_admin()) with check (e_admin());
+create policy "note elimina" on public.note_iscritti for delete to authenticated using (e_admin());
+grant select, insert, update, delete on public.note_iscritti to authenticated;
+
+alter policy "pag leggi" on public.pagamenti using (e_admin());
+-- Le funzioni genera_avvisi_certificati() e nuovo_utente() aggiornate, e il job pg_cron
+-- 'sct-avvisi-certificati' (ogni giorno alle 06:00 UTC), sono nella migrazione del progetto.

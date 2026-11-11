@@ -178,6 +178,7 @@
       S.d = await DB.loadAll();
       if (!S.view) S.view = S.sess.role === 'admin' ? 'cal' : 'lezioni';
       render();
+      notificaNuovi();
     } catch (e) {
       app.innerHTML = '<div class="center-msg"><h2>Errore</h2><p>' + esc(e.message) + '</p><button class="btn primary" onclick="location.reload()">Riprova</button></div>';
     } finally { S._loading = false; }
@@ -293,7 +294,7 @@
     app.innerHTML = `<div class="center-msg">
       <img src="icons/logo.png" class="login-logo" alt="">
       <h2>Account non ancora abilitato</h2>
-      <p>Registrazione ricevuta! L'email <b>${esc(S.sess.email)}</b> non è ancora collegata a una scheda del Training Lab.<br>L'amministratore vede la tua richiesta e ti abiliterà a breve: poi tocca "Riprova".</p>
+      <p>Registrazione ricevuta! L'email <b>${esc(S.sess.email)}</b> non è ancora collegata a una scheda del Training Lab.<br>L'amministratore ha ricevuto un avviso e ti abiliterà a breve: poi tocca "Riprova".</p>
       <div class="m-row"><button class="btn ghost" id="b-out">Esci</button><button class="btn primary" id="b-retry">Riprova</button></div></div>`;
     $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
     $('#b-retry').onclick = carica;
@@ -308,6 +309,7 @@
     me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
     tel: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
     mail: '<path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="m3 7 9 6 9-6"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
     ev: '<path d="M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.2 1.3-6.6L2.5 9l6.6-.8z"/>',
     pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -338,9 +340,11 @@
         <img src="icons/logo.png" alt="" class="top-logo">
         <div class="top-t"><b>Training Lab</b><small>${admin ? 'Amministratore' : esc(nomeCompleto(S.sess.iscritto || { nome: '' }))}</small></div>
         <span data-update-slot></span>
+        <button class="icbtn bell" id="b-avvisi" aria-label="Avvisi">${ic('bell')}${nonLetti().length ? `<i class="bell-n">${nonLetti().length > 9 ? '9+' : nonLetti().length}</i>` : ''}</button>
       </header>
       <main id="main">${body}</main>
       <nav class="tabs">${tabs.map(t => `<button class="tab${S.view === t[0] ? ' on' : ''}" data-tab="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</nav>`;
+    const bav = $('#b-avvisi'); if (bav) bav.onclick = openAvvisi;
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.view = b.dataset.tab; render(); window.scrollTo(0, 0); });
     if (DB.mode === 'demo') bindDemo();
     bind();
@@ -392,7 +396,7 @@
       cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}</button>`;
     }
     const oggiB = admin ? compleanniHtml(compleanniDel(today()).map(i => ({ i, ds: today(), k: 0 })), 'Compleanni di oggi') : '';
-    return oggiB + `
+    return bannerCertificati() + oggiB + `
       <section class="card cal">
         <div class="cal-h">
           <button class="icbtn" data-mon="-1" aria-label="Mese precedente">${ic('l')}</button>
@@ -504,6 +508,81 @@
     w.querySelectorAll('[data-popen]').forEach(b => b.onclick = () => openScheda(b.dataset.popen));
   }
 
+
+
+  /* ------------------------------------------------------------------ avvisi */
+  function nonLetti() { return (S.d && S.d.avvisi || []).filter(a => !a.letto); }
+  const AV_IC = { cert_30: '🟡', cert_15: '🟠', cert_scaduto: '🔴', nuovo: '🆕', collegato: '🔗', doppione: '⚠️' };
+  function openAvvisi() {
+    const w = document.createElement('div');
+    w.className = 'sheet';
+    document.body.appendChild(w); document.body.classList.add('noscroll');
+    const close = () => { w.remove(); document.body.classList.remove('noscroll'); render(); };
+    const admin = S.sess.role === 'admin';
+    const draw = () => {
+      const lista = S.d.avvisi || [], nl = nonLetti();
+      const notifOk = 'Notification' in window && Notification.permission === 'granted';
+      w.innerHTML = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Avvisi</b><span style="width:38px"></span></div>
+        <div class="sheet-body">
+          ${'Notification' in window && !notifOk && Notification.permission !== 'denied' ? `<div class="card pad notif-ask"><b>Ricevi gli avvisi sul telefono</b><p class="muted small">Ti avvisiamo quando apri l'app e ci sono novità (scadenze certificato${admin ? ', nuovi iscritti' : ''}).</p><button class="btn primary sm" data-notif>Attiva notifiche</button></div>` : ''}
+          ${nl.length ? `<button class="btn ghost wide" data-tutti>Segna tutti come letti (${nl.length})</button>` : ''}
+          ${lista.length ? '<ul class="avlist">' + lista.map(a => `<li class="${a.letto ? '' : 'new'}">
+              <span class="av-ic">${AV_IC[a.tipo] || '🔔'}</span>
+              <div class="av-b"><b>${esc(a.titolo)}</b>${a.testo ? `<p>${esc(a.testo)}</p>` : ''}<small>${fmt((a.creato || '').slice(0, 10))}</small>
+                <div class="av-act">${admin && a.iscritto_id && S.d.iscritti.some(i => i.id === a.iscritto_id) ? `<button class="link" data-aopen="${esc(a.iscritto_id)}|${esc(a.id)}">Apri scheda ›</button>` : ''}
+                ${!a.letto ? `<button class="link" data-aletto="${esc(a.id)}">Segna come letto</button>` : ''}
+                ${admin && a.per_admin && a.letto ? `<button class="link muted-l" data-adel="${esc(a.id)}">Elimina</button>` : ''}</div></div></li>`).join('') + '</ul>'
+            : '<p class="muted card pad">Nessun avviso.</p>'}
+          <p class="hint">Le scadenze del certificato vengono controllate ogni mattina: avviso a 1 mese, a 15 giorni e alla scadenza.</p>
+        </div>`;
+      w.querySelector('[data-x]').onclick = close;
+      const nb = w.querySelector('[data-notif]');
+      if (nb) nb.onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} draw(); if (Notification.permission === 'granted') toast('Notifiche attivate'); };
+      const tutti = w.querySelector('[data-tutti]');
+      if (tutti) tutti.onclick = async () => { await run(() => DB.segnaLetti(nonLetti().map(a => a.id))).catch(() => {}); S.d = await DB.loadAll(); draw(); };
+      w.querySelectorAll('[data-aletto]').forEach(b => b.onclick = async () => { await run(() => DB.segnaLetti([b.dataset.aletto])).catch(() => {}); S.d = await DB.loadAll(); draw(); });
+      w.querySelectorAll('[data-adel]').forEach(b => b.onclick = async () => { await run(() => DB.eliminaAvviso(b.dataset.adel)).catch(() => {}); S.d = await DB.loadAll(); draw(); });
+      w.querySelectorAll('[data-aopen]').forEach(b => b.onclick = async () => {
+        const [iid, aid] = b.dataset.aopen.split('|');
+        const a = (S.d.avvisi || []).find(x => x.id === aid);
+        if (a && !a.letto) { try { await DB.segnaLetti([aid]); S.d = await DB.loadAll(); } catch (e) {} }
+        draw(); openScheda(iid);
+      });
+    };
+    draw();
+  }
+  // notifica di sistema per gli avvisi nuovi (all'apertura dell'app)
+  async function notificaNuovi() {
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const KEY = 'sct-avvisi-notificati';
+      let fatti = []; try { fatti = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+      const nuovi = nonLetti().filter(a => !fatti.includes(a.id)).slice(0, 3);
+      if (!nuovi.length) return;
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      for (const a of nuovi) {
+        const opt = { body: a.testo || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'sct-' + a.id };
+        if (reg && reg.showNotification) await reg.showNotification('Training Lab · ' + a.titolo, opt);
+        else new Notification('Training Lab · ' + a.titolo, opt);
+      }
+      fatti = fatti.concat(nuovi.map(a => a.id)).slice(-300);
+      try { localStorage.setItem(KEY, JSON.stringify(fatti)); } catch (e) {}
+    } catch (e) { /* notifiche non disponibili */ }
+  }
+  // banner fisso per i certificati scaduti
+  function bannerCertificati() {
+    if (S.sess.role === 'admin') {
+      const sc = S.d.iscritti.filter(i => i.attivo !== false && statoCert(i).c === 'red');
+      const ys = S.d.iscritti.filter(i => i.attivo !== false && statoCert(i).c === 'yellow');
+      if (!sc.length && !ys.length) return '';
+      return `<button class="alert-b ${sc.length ? 'red' : 'yellow'}" data-gocert><span class="ab-t">${sc.length ? `<span>🔴 <b>${sc.length}</b> ${sc.length === 1 ? 'certificato scaduto o mancante' : 'certificati scaduti o mancanti'}</span>` : ''}${ys.length ? `<span>🟡 <b>${ys.length}</b> in scadenza</span>` : ''}</span><span class="ab-go">Vedi ›</span></button>`;
+    }
+    const me = S.sess.iscritto; if (!me) return '';
+    const c = statoCert(me);
+    if (c.c === 'red') return `<div class="alert-b red static">🔴 <span><b>Certificato medico ${me.certificato_scadenza ? 'scaduto' : 'mancante'}.</b> ${me.certificato_scadenza ? 'È scaduto il ' + fmt(me.certificato_scadenza) + '. ' : ''}Consegna il nuovo certificato all'allenatore.</span></div>`;
+    if (c.c === 'yellow') return `<div class="alert-b yellow static">🟡 <span><b>Certificato in scadenza:</b> ${esc(c.t)}. Prenota la visita.</span></div>`;
+    return '';
+  }
 
   /* ------------------------------------------------------------------ eventi */
   function eventiDel(ds) { return (S.d.eventi || []).filter(e => e.data === ds); }
@@ -638,7 +717,7 @@
       ds = addDays(ds, 1);
     }
     const bd = compleannoIl(me.data_nascita, today());
-    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
+    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}${bannerCertificati()}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
       <p class="muted">Risulti sempre presente: se non puoi venire, segnala l'assenza.</p></section>
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
@@ -646,11 +725,12 @@
       ${out.length ? out.map(x => lezioneCard(x[0], x[1])).join('') : '<p class="muted card pad">Nessuna lezione in programma.</p>'}`;
   }
   function statoCards(i) {
-    const c = statoCert(i), s = statoIscr(i), q = statoQuota(i);
-    return `<div class="stati">
+    const admin = S.sess.role === 'admin';
+    const c = statoCert(i), s = statoIscr(i), q = admin ? statoQuota(i) : null;
+    return `<div class="stati${admin ? '' : ' due'}">
       <div class="st ${c.c}"><small>Certificato medico</small><b>${esc(c.t)}</b></div>
       <div class="st ${s.c}"><small>Iscrizione</small><b>${esc(s.t)}</b></div>
-      <div class="st ${q.c}"><small>Quota mensile</small><b>${esc(q.t)}</b></div></div>`;
+      ${q ? `<div class="st ${q.c}"><small>Quota mensile</small><b>${esc(q.t)}</b></div>` : ''}</div>`;
   }
   function viewMe() {
     const me = S.sess.iscritto;
@@ -694,7 +774,7 @@
       <button class="btn sm primary" data-reg="${esc(r.user_id)}">Crea scheda</button></li>`).join('')}</ul>
       <p class="hint">Si sono registrati nell'app ma non hanno ancora una scheda: creala e potranno entrare.</p></section>` : '';
     const bdays = compleanniHtml(prossimiCompleanni(7), 'Compleanni nei prossimi 7 giorni');
-    return reqHtml + bdays + `
+    return bannerCertificati() + reqHtml + bdays + `
       <div class="search"><input class="inp" id="q" type="search" placeholder="Cerca per nome, telefono, email…" value="${esc(S.q)}"></div>
       <div class="chips">${f('tutti', 'Tutti', all.length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Disabilitati', all.filter(i => i.attivo === false).length)}</div>
       <div class="legend l2"><span><i class="dot green">C</i>Certificato</span><span><i class="dot green">I</i>Iscrizione</span><span><i class="dot green">Q</i>Quota mese</span></div>
@@ -730,6 +810,7 @@
       certificato_scadenza: '', certificato_tipo: 'non_agonistico', lezioni: st.slots.map(s => s.id), attivo: true, note: '', data_nascita: '', soprannome: ''
     };
     if (!id && prefill) Object.assign(i, prefill);
+    if (id && i) i.note = (S.d.note || {})[id] || '';
     if (!i) return;
     S.scheda = i;
     const w = document.createElement('div');
@@ -783,7 +864,7 @@
             <label>Scadenza<input class="inp" type="date" name="certificato_scadenza" value="${esc(i.certificato_scadenza || '')}"></label></div>
 
             <input type="checkbox" name="attivo" hidden${i.attivo !== false ? ' checked' : ''}>
-            <label>Note<textarea class="inp" name="note" rows="2" maxlength="1000">${esc(i.note || '')}</textarea></label>
+            <label>Note riservate <small class="muted">(🔒 visibili solo a te)</small><textarea class="inp" name="note" rows="2" maxlength="1000">${esc(i.note || '')}</textarea></label>
           </form>
 
           ${id ? `<h3 class="sec-t">Quote mensili${st.quota_mensile ? ' · € ' + esc(st.quota_mensile) : ''}</h3>
@@ -949,6 +1030,7 @@
     main.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => { S.filtro = S.filtro === b.dataset.filtro ? 'tutti' : b.dataset.filtro; render(); });
     const nb = $('#b-new'); if (nb) nb.onclick = () => openScheda(null);
     main.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => informativa());
+    main.querySelectorAll('[data-gocert]').forEach(b => b.onclick = () => { S.view = 'iscritti'; S.filtro = 'cert'; render(); window.scrollTo(0, 0); });
     const ne = $('#b-newev'); if (ne) ne.onclick = () => openEventoForm(null);
     main.querySelectorAll('[data-ev-edit]').forEach(b => b.onclick = () => openEventoForm(b.dataset.evEdit));
     main.querySelectorAll('[data-ev-list]').forEach(b => b.onclick = () => openEventoPartecipanti(b.dataset.evList));

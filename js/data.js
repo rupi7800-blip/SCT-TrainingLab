@@ -39,6 +39,19 @@
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* solo in memoria */ } };
     const uid = () => 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const ok = v => Promise.resolve(JSON.parse(JSON.stringify(v)));
+    mem.letti = mem.letti || [];
+    function demoAvvisi() {
+      const t = ymd(new Date()), out = [];
+      const diff = s => Math.round((new Date(s) - new Date(t)) / 86400000);
+      mem.iscritti.filter(i => i.attivo !== false && i.certificato_scadenza && diff(i.certificato_scadenza) <= 30).forEach(i => {
+        const g = diff(i.certificato_scadenza), tipo = g <= 0 ? 'cert_scaduto' : g <= 15 ? 'cert_15' : 'cert_30';
+        const tit = g <= 0 ? 'Certificato medico scaduto' : g <= 15 ? 'Certificato in scadenza tra ' + g + ' giorni' : 'Certificato in scadenza tra un mese';
+        const sc = i.certificato_scadenza.split('-').reverse().join('/');
+        if (mem.vista === 'admin') out.push({ id: 'A' + tipo + i.id, per_admin: true, iscritto_id: i.id, tipo, titolo: tit, testo: i.nome + ' ' + i.cognome + ': ' + (g <= 0 ? 'certificato scaduto il ' : 'il certificato scade il ') + sc + '.', creato: new Date().toISOString() });
+        else if (mem.vista === i.id) out.push({ id: 'U' + tipo + i.id, destinatario_iscritto: i.id, iscritto_id: i.id, tipo, titolo: tit, testo: g <= 0 ? 'Il tuo certificato medico è scaduto il ' + sc + '.' : 'Il tuo certificato medico scade il ' + sc + '. Ricordati di rinnovarlo.', creato: new Date().toISOString() });
+      });
+      return out.map(a => Object.assign(a, { letto: mem.letti.includes(a.id) }));
+    }
 
     return {
       mode: 'demo',
@@ -60,7 +73,9 @@
           annullamenti: mem.annullamenti, registrazioni: [], consensi: [],
           eventi: mem.eventi.slice().sort((a, b) => (a.data + (a.ora || '')).localeCompare(b.data + (b.ora || ''))),
           pe: mem.vista === 'admin' ? mem.pe : mem.pe.filter(p => p.iscritto_id === mem.vista),
-          conteggi: mem.pe.reduce((m, p) => { m[p.evento_id] = (m[p.evento_id] || 0) + 1; return m; }, {})
+          conteggi: mem.pe.reduce((m, p) => { m[p.evento_id] = (m[p.evento_id] || 0) + 1; return m; }, {}),
+          avvisi: demoAvvisi(),
+          note: mem.iscritti.reduce((m, i) => { if (mem.vista === 'admin') m[i.id] = i.note || ''; return m; }, {})
         });
       },
       async saveSettings(s) { mem.settings = s; save(); return ok(s); },
@@ -73,6 +88,8 @@
         const P = window.PRIVACY || { VERSIONE: '1.0' };
         chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
+      async segnaLetti(ids) { ids.forEach(x => { if (!mem.letti.includes(x)) mem.letti.push(x); }); save(); },
+      async eliminaAvviso(id) { if (!mem.letti.includes(id)) mem.letti.push(id); save(); },
       async deleteIscritto(id) {
         mem.iscritti = mem.iscritti.filter(x => x.id !== id);
         mem.pagamenti = mem.pagamenti.filter(x => x.iscritto_id !== id);
@@ -172,7 +189,7 @@
     }
     const clean = o => {
       const keys = ['nome', 'cognome', 'soprannome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
-        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'note'];
+        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo'];
       const r = {}; keys.forEach(k => { r[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
       r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false;
       if (r.email) r.email = r.email.trim().toLowerCase();
@@ -232,7 +249,8 @@
       },
       async loadAll() {
         const from = new Date(); from.setDate(from.getDate() - 400);
-        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt] = await Promise.all([
+        if (!this._avvisiGenerati) { this._avvisiGenerati = true; try { await sb.rpc('genera_avvisi_certificati'); } catch (e) { /* riprova al prossimo avvio */ } }
+        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt, avv, nts] = await Promise.all([
           sb.from('impostazioni').select('dati').eq('id', 1).maybeSingle(),
           sb.from('iscritti').select('*').order('cognome').order('nome'),
           sb.from('pagamenti').select('*'),
@@ -242,13 +260,17 @@
           sb.from('consensi_privacy').select('email,versione,accettato_il'),
           sb.from('eventi').select('*').gte('data', ymd(from)).order('data').order('ora'),
           sb.from('partecipazioni_eventi').select('*'),
-          sb.rpc('conteggio_partecipanti_eventi')
+          sb.rpc('conteggio_partecipanti_eventi'),
+          sb.from('avvisi').select('*').order('creato', { ascending: false }).limit(150),
+          sb.from('note_iscritti').select('*')
         ]);
         return {
           settings: withDefaults(chk(imp) && chk(imp).dati),
           iscritti: chk(isc) || [], pagamenti: chk(pag) || [], assenze: chk(ass) || [], annullamenti: chk(ann) || [], registrazioni: chk(reg) || [], consensi: chk(con) || [],
           eventi: chk(evs) || [], pe: chk(pe) || [],
-          conteggi: (chk(cnt) || []).reduce((m, r) => { m[r.evento_id] = Number(r.n); return m; }, {})
+          conteggi: (chk(cnt) || []).reduce((m, r) => { m[r.evento_id] = Number(r.n); return m; }, {}),
+          avvisi: chk(avv) || [],
+          note: (chk(nts) || []).reduce((m, r) => { m[r.iscritto_id] = r.note || ''; return m; }, {})
         };
       },
       async saveSettings(s) {
@@ -257,9 +279,17 @@
       },
       async saveIscritto(o) {
         const row = clean(o);
-        if (o.id) return chk(await sb.from('iscritti').update(row).eq('id', o.id).select().single());
-        return chk(await sb.from('iscritti').insert(row).select().single());
+        const saved = o.id ? chk(await sb.from('iscritti').update(row).eq('id', o.id).select().single())
+                           : chk(await sb.from('iscritti').insert(row).select().single());
+        if (o.note !== undefined) {   // note riservate: tabella leggibile solo dall'amministratore
+          const n = (o.note || '').trim();
+          if (n) chk(await sb.from('note_iscritti').upsert({ iscritto_id: saved.id, note: n, aggiornato: new Date().toISOString() }));
+          else chk(await sb.from('note_iscritti').delete().eq('iscritto_id', saved.id));
+        }
+        return saved;
       },
+      async segnaLetti(ids) { if (ids.length) chk(await sb.from('avvisi').update({ letto: true }).in('id', ids)); },
+      async eliminaAvviso(id) { chk(await sb.from('avvisi').delete().eq('id', id)); },
       async accettaPrivacy(uid, email) {
         const P = window.PRIVACY || { VERSIONE: '1.0' };
         chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));

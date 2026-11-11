@@ -1,1 +1,1 @@
-{ "version": "1.5.1", "date": "2026-11-11", "notes": ["Iscritti con frequenza disabilitata visibili in trasparenza nell'elenco iscritti"] }
+{ "version": "1.6.0", "date": "2026-11-11", "notes": ["Alla registrazione l'iscritto viene collegato alla sua scheda o la scheda viene creata, con avviso all'amministratore", "Avvisi scadenza certificato a 1 mese, 15 giorni e alla scadenza, per iscritto e amministratore", "Campanella avvisi e notifiche sul telefono", "Quote e note visibili solo all'amministratore"] }
