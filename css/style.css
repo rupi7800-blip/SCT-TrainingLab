@@ -300,3 +300,5 @@ label .inp { margin-top: 5px; }
 .bday-line { background: #fff4d6; border-radius: 12px; padding: 10px 12px; font-weight: 600; margin: 12px 0 0; }
 .bday-line a { color: #1a9e4b; }
 .bdot { position: absolute; top: 0; left: 1px; font-style: normal; font-size: 11px; line-height: 1; }
+.ilist li.dis .irow { opacity: .45; }
+.ilist li.dis .irow b { font-weight: 600; }

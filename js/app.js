@@ -685,7 +685,7 @@
     if (S.filtro === 'iscr') list = list.filter(i => i.attivo !== false && statoIscr(i).c !== 'green');
     if (S.filtro === 'quota') list = list.filter(i => i.attivo !== false && statoQuota(i).c !== 'green');
     if (S.filtro === 'inattivi') list = list.filter(i => i.attivo === false);
-    else if (S.filtro !== 'tutti') { /* già filtrati */ } else list = list.filter(i => i.attivo !== false);
+    // "Tutti": attivi e disabilitati insieme; i disabilitati compaiono in trasparenza
     const f = (k, t, n) => `<button class="chip${S.filtro === k ? ' on' : ''}" data-filtro="${k}">${t}${n != null ? ' <b>' + n + '</b>' : ''}</button>`;
     const emails = new Set(all.map(i => (i.email || '').toLowerCase()).filter(Boolean));
     const nuove = (S.d.registrazioni || []).filter(r => r.email && !emails.has(r.email.toLowerCase()) && r.email.toLowerCase() !== (S.sess.email || ''));
@@ -696,10 +696,10 @@
     const bdays = compleanniHtml(prossimiCompleanni(7), 'Compleanni nei prossimi 7 giorni');
     return reqHtml + bdays + `
       <div class="search"><input class="inp" id="q" type="search" placeholder="Cerca per nome, telefono, email…" value="${esc(S.q)}"></div>
-      <div class="chips">${f('tutti', 'Attivi', all.filter(i => i.attivo !== false).length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Disabilitati', all.filter(i => i.attivo === false).length)}</div>
+      <div class="chips">${f('tutti', 'Tutti', all.length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Disabilitati', all.filter(i => i.attivo === false).length)}</div>
       <div class="legend l2"><span><i class="dot green">C</i>Certificato</span><span><i class="dot green">I</i>Iscrizione</span><span><i class="dot green">Q</i>Quota mese</span></div>
       <ul class="ilist card">${list.length ? list.map(i => `
-        <li><button class="irow" data-open="${i.id}">
+        <li class="${i.attivo === false ? 'dis' : ''}"><button class="irow" data-open="${i.id}">
           <span class="av">${esc(iniziali(i))}</span>
           <span class="inf"><b>${esc((i.cognome ? i.cognome + ' ' : '') + i.nome)}${i.soprannome ? ' <small class="muted">“' + esc(i.soprannome) + '”</small>' : ''}</b><small>${i.attivo === false ? '<span class="tag gray">Frequenza disabilitata</span>' : esc(lezioniTesto(i))}</small></span>
           <span class="dots">${dot(statoCert(i), 'C')}${dot(statoIscr(i), 'I')}${dot(statoQuota(i), 'Q')}</span>

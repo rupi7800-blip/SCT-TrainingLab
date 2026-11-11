@@ -1,1 +1,1 @@
-{ "version": "1.5.0", "date": "2026-11-11", "notes": ["Abilita o disabilita la frequenza di un iscritto con un interruttore", "Promemoria compleanni con auguri su WhatsApp", "Soprannome nell'anagrafica e nella registrazione", "Nelle presenze compare il soprannome, altrimenti nome e iniziale del cognome"] }
+{ "version": "1.5.1", "date": "2026-11-11", "notes": ["Iscritti con frequenza disabilitata visibili in trasparenza nell'elenco iscritti"] }
