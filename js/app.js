@@ -739,7 +739,7 @@
         ${e.luogo ? `<li>${ic('pin')}<a href="${esc(url)}" target="_blank" rel="noopener">${esc(e.luogo)}<small>Apri in Maps ›</small></a></li>` : ''}
         ${costo ? `<li>${ic('euro')}<span>${esc(costo)}</span></li>` : ''}
         ${e.note && !compatto ? `<li>${ic('note')}<span class="ev-note">${esc(e.note)}</span></li>` : ''}
-        <li>${ic('isc')}<span>${n} ${n === 1 ? 'partecipante' : 'partecipanti'}</span></li>
+        <li>${ic('isc')}<span>${n} ${n === 1 ? 'partecipante' : 'partecipanti'}${(() => { const l = (S.d.nomiEventi || {})[e.id] || []; return l.length ? '<span class="ev-nomi">' + l.map(p => esc((p.soprannome || '').trim() || (p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : '')))).join(', ') + '</span>' : ''; })()}</span></li>
       </ul>
       ${azioni ? `<div class="ev-act">${azioni}</div>` : ''}
     </article>`;

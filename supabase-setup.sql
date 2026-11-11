@@ -457,3 +457,15 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public.partecipanti_evento(uuid) from public, anon;
 grant execute on function public.partecipanti_evento(uuid) to authenticated;
+
+-- v1.8.1 · nomi dei partecipanti di tutti gli eventi (per mostrarli nel riquadro dell'evento)
+create or replace function public.partecipanti_eventi_tutti()
+returns table (evento_id uuid, nome text, iniziale text, soprannome text)
+language sql stable security definer set search_path = public as $$
+  select p.evento_id, i.nome, upper(left(coalesce(i.cognome, ''), 1)), nullif(trim(coalesce(i.soprannome, '')), '')
+  from partecipazioni_eventi p join iscritti i on i.id = p.iscritto_id join eventi e on e.id = p.evento_id
+  where (e_admin() or e_iscritto_attivo()) and not i.prova and e.data >= current_date - 400
+  order by p.evento_id, coalesce(nullif(trim(i.soprannome), ''), i.nome), i.cognome;
+$$;
+revoke execute on function public.partecipanti_eventi_tutti() from public, anon;
+grant execute on function public.partecipanti_eventi_tutti() to authenticated;

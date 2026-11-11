@@ -79,6 +79,7 @@
           pe: mem.vista === 'admin' ? mem.pe : mem.pe.filter(p => p.iscritto_id === mem.vista),
           conteggi: mem.pe.reduce((m, p) => { m[p.evento_id] = (m[p.evento_id] || 0) + 1; return m; }, {}),
           avvisi: demoAvvisi(),
+          nomiEventi: mem.pe.reduce((m, p) => { const i = mem.iscritti.find(x => x.id === p.iscritto_id); if (i && !i.prova) (m[p.evento_id] = m[p.evento_id] || []).push({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null }); return m; }, {}),
           note: mem.iscritti.reduce((m, i) => { if (mem.vista === 'admin') m[i.id] = i.note || ''; return m; }, {})
         });
       },
@@ -262,7 +263,7 @@
       async loadAll() {
         const from = new Date(); from.setDate(from.getDate() - 400);
         if (!this._avvisiGenerati) { this._avvisiGenerati = true; try { await sb.rpc('genera_avvisi_certificati'); } catch (e) { /* riprova al prossimo avvio */ } }
-        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt, avv, nts] = await Promise.all([
+        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt, avv, nts, pet] = await Promise.all([
           sb.from('impostazioni').select('dati').eq('id', 1).maybeSingle(),
           sb.from('iscritti').select('*').order('cognome').order('nome'),
           sb.from('pagamenti').select('*'),
@@ -274,7 +275,8 @@
           sb.from('partecipazioni_eventi').select('*'),
           sb.rpc('conteggio_partecipanti_eventi'),
           sb.from('avvisi').select('*').order('creato', { ascending: false }).limit(150),
-          sb.from('note_iscritti').select('*')
+          sb.from('note_iscritti').select('*'),
+          sb.rpc('partecipanti_eventi_tutti')
         ]);
         return {
           settings: withDefaults(chk(imp) && chk(imp).dati),
@@ -282,7 +284,8 @@
           eventi: chk(evs) || [], pe: chk(pe) || [],
           conteggi: (chk(cnt) || []).reduce((m, r) => { m[r.evento_id] = Number(r.n); return m; }, {}),
           avvisi: chk(avv) || [],
-          note: (chk(nts) || []).reduce((m, r) => { m[r.iscritto_id] = r.note || ''; return m; }, {})
+          note: (chk(nts) || []).reduce((m, r) => { m[r.iscritto_id] = r.note || ''; return m; }, {}),
+          nomiEventi: (pet && !pet.error ? pet.data || [] : []).reduce((m, r) => { (m[r.evento_id] = m[r.evento_id] || []).push(r); return m; }, {})
         };
       },
       async saveSettings(s) {

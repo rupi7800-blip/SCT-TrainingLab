@@ -355,3 +355,4 @@ label .inp { margin-top: 5px; }
 .regline.ok { background: var(--green-l); color: var(--green); }
 .regline.no { background: #f1f2f4; color: var(--ink2); }
 .noreg { color: var(--muted); font-style: italic; }
+.ev-nomi { display: block; color: var(--ink2); font-size: 13.5px; margin-top: 2px; }
