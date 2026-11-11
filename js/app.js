@@ -556,7 +556,7 @@
     const me = S.sess.iscritto; return me ? av.filter(a => a.destinatario_iscritto === me.id) : [];
   }
   function nonLetti() { return avvisiVisibili().filter(a => !a.letto); }
-  const AV_IC = { cert_30: '🟡', cert_15: '🟠', cert_scaduto: '🔴', nuovo: '🆕', collegato: '🔗', doppione: '⚠️' };
+  const AV_IC = { cert_mancante: '❗', modifica: '✏️', cert_30: '🟡', cert_15: '🟠', cert_scaduto: '🔴', nuovo: '🆕', collegato: '🔗', doppione: '⚠️' };
   function openAvvisi() {
     const w = document.createElement('div');
     w.className = 'sheet';
@@ -577,7 +577,7 @@
                 ${!a.letto ? `<button class="link" data-aletto="${esc(a.id)}">Segna come letto</button>` : ''}
                 ${admin && a.per_admin && a.letto ? `<button class="link muted-l" data-adel="${esc(a.id)}">Elimina</button>` : ''}</div></div></li>`).join('') + '</ul>'
             : '<p class="muted card pad">Nessun avviso.</p>'}
-          <p class="hint">Le scadenze del certificato vengono controllate ogni mattina: avviso a 1 mese, a 15 giorni e alla scadenza.</p>
+          <p class="hint">Il certificato medico viene controllato ogni mattina: avviso se manca, a 1 mese, a 15 giorni e alla scadenza.</p>
         </div>`;
       w.querySelector('[data-x]').onclick = close;
       const nb = w.querySelector('[data-notif]');

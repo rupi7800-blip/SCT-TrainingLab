@@ -43,7 +43,11 @@
     function demoAvvisi() {
       const t = ymd(new Date()), out = [];
       const diff = s => Math.round((new Date(s) - new Date(t)) / 86400000);
-      mem.iscritti.filter(i => i.attivo !== false && i.certificato_scadenza && diff(i.certificato_scadenza) <= 30).forEach(i => {
+      mem.iscritti.filter(i => i.attivo !== false && !i.prova && !i.certificato_scadenza).forEach(i => {
+        if (mem.vista === 'admin') out.push({ id: 'Acm' + i.id, per_admin: true, iscritto_id: i.id, tipo: 'cert_mancante', titolo: 'Certificato medico mancante', testo: i.nome + ' ' + i.cognome + ' non ha ancora consegnato il certificato medico.', creato: new Date().toISOString() });
+        else if (mem.vista === i.id) out.push({ id: 'Ucm' + i.id, destinatario_iscritto: i.id, iscritto_id: i.id, tipo: 'cert_mancante', titolo: 'Certificato medico mancante', testo: 'Non risulta ancora il tuo certificato medico sportivo: consegnalo all\'allenatore per poterti allenare.', creato: new Date().toISOString() });
+      });
+      mem.iscritti.filter(i => i.attivo !== false && !i.prova && i.certificato_scadenza && diff(i.certificato_scadenza) <= 30).forEach(i => {
         const g = diff(i.certificato_scadenza), tipo = g <= 0 ? 'cert_scaduto' : g <= 15 ? 'cert_15' : 'cert_30';
         const tit = g <= 0 ? 'Certificato medico scaduto' : g <= 15 ? 'Certificato in scadenza tra ' + g + ' giorni' : 'Certificato in scadenza tra un mese';
         const sc = i.certificato_scadenza.split('-').reverse().join('/');

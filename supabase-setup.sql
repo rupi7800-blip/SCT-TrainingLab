@@ -442,3 +442,6 @@ alter table public.iscritti add column if not exists prova boolean not null defa
 
 -- v1.7.1 · quota attivabile/disattivabile per iscritto
 alter table public.iscritti add column if not exists quota_attiva boolean not null default true;
+
+-- v1.7.2 · genera_avvisi_certificati() crea anche l'avviso "Certificato medico mancante"
+-- (una volta per iscritto, chiave A:/U:cert_mancante:<id>) — vedi migrazione "avviso_certificato_mancante".
