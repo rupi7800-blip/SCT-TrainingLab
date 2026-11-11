@@ -349,3 +349,9 @@ label .inp { margin-top: 5px; }
 .inst[hidden] { display: none; }
 .ios-sh { display: inline-block; border: 1.5px solid currentColor; border-radius: 5px; padding: 0 4px; font-size: 12px; }
 .login-inst { width: 100%; max-width: 380px; margin-top: 12px; text-align: left; }
+
+.qm { border: 2px solid #f1d58a; background: #fffbef; margin-bottom: 12px; }
+.regline { margin: 12px 0 0; padding: 9px 12px; border-radius: 12px; font-weight: 700; font-size: 14px; }
+.regline.ok { background: var(--green-l); color: var(--green); }
+.regline.no { background: #f1f2f4; color: var(--ink2); }
+.noreg { color: var(--muted); font-style: italic; }

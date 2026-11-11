@@ -398,7 +398,7 @@
         <img src="icons/logo.png" alt="" class="top-logo">
         <div class="top-t"><b>Training Lab</b><small>${admin ? 'Amministratore' : esc(nomeCompleto(S.sess.iscritto || { nome: '' }))}</small></div>
         <span data-update-slot></span>
-        <button class="icbtn bell" id="b-avvisi" aria-label="Avvisi">${ic('bell')}${nonLetti().length ? `<i class="bell-n">${nonLetti().length > 9 ? '9+' : nonLetti().length}</i>` : ''}</button>
+        <button class="icbtn bell" id="b-avvisi" aria-label="Avvisi">${ic('bell')}${badgeAvvisi() ? `<i class="bell-n">${badgeAvvisi() > 9 ? '9+' : badgeAvvisi()}</i>` : ''}</button>
       </header>
       <main id="main">${body}</main>
       <nav class="tabs">${tabs.map(t => `<button class="tab${S.view === t[0] ? ' on' : ''}" data-tab="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</nav>`;
@@ -455,7 +455,9 @@
       cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}</button>`;
     }
     const oggiB = admin ? compleanniHtml(compleanniDel(today()).map(i => ({ i, ds: today(), k: 0 })), 'Compleanni di oggi') : '';
-    return bannerCertificati() + oggiB + `
+    const qm = admin ? quoteMeseMancanti() : [];
+    const qBan = qm.length ? `<button class="alert-b yellow" data-goquote><span class="ab-t"><span>💶 <b>${qm.length}</b> ${qm.length === 1 ? 'quota' : 'quote'} di ${esc(nomeMese(meseCorrente()))} da pagare</span></span><span class="ab-go">Vedi ›</span></button>` : '';
+    return bannerCertificati() + qBan + oggiB + `
       <section class="card cal">
         <div class="cal-h">
           <button class="icbtn" data-mon="-1" aria-label="Mese precedente">${ic('l')}</button>
@@ -519,7 +521,7 @@
     }
     return `<div class="card les-card${ann ? ' is-ann' : ''}" data-pres="${ds}|${s.id}" role="button" tabindex="0">
       <div class="lc-date"><b>${parse(ds).getDate()}</b><small>${MESI[parse(ds).getMonth()].slice(0, 3)}</small></div>
-      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b>${stato}<small class="lc-more">Vedi chi c'è ›</small></div>
+      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b>${stato}<small class="lc-more">👥 Vedi chi c'è ›</small></div>
       ${btn}</div>`;
   }
   function dot(st, l) { return `<i class="dot ${st.c}" title="${esc(st.t)}">${l}</i>`; }
@@ -576,7 +578,21 @@
     if (S.sess.role === 'admin') return av.filter(a => a.per_admin);
     const me = S.sess.iscritto; return me ? av.filter(a => a.destinatario_iscritto === me.id) : [];
   }
+  function quoteMeseMancanti() {
+    if (S.sess.role !== 'admin' || !S.d) return [];
+    const m = meseCorrente();
+    if (!meseAttivo(m)) return [];
+    return veri().filter(i => i.attivo !== false && i.quota_attiva !== false && (!i.data_iscrizione || i.data_iscrizione.slice(0, 7) <= m) && !pagato(i.id, m))
+      .sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
+  }
   function nonLetti() { return avvisiVisibili().filter(a => !a.letto); }
+  function badgeAvvisi() { return nonLetti().length + quoteMeseMancanti().length; }
+  function registrazioneDi(i) {
+    const e = (i.email || '').toLowerCase(); if (!e) return null;
+    const r = (S.d.registrazioni || []).find(x => (x.email || '').toLowerCase() === e);
+    if (r) return { data: (r.creato || '').slice(0, 10) };
+    const c = consensoDi(e); return c ? { data: (c.accettato_il || '').slice(0, 10) } : null;
+  }
   const AV_IC = { cert_mancante: '❗', modifica: '✏️', cert_30: '🟡', cert_15: '🟠', cert_scaduto: '🔴', nuovo: '🆕', collegato: '🔗', doppione: '⚠️' };
   function openAvvisi() {
     const w = document.createElement('div');
@@ -590,6 +606,9 @@
       w.innerHTML = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Avvisi</b><span style="width:38px"></span></div>
         <div class="sheet-body">
           ${'Notification' in window && !notifOk && Notification.permission !== 'denied' ? `<div class="card pad notif-ask"><b>Ricevi gli avvisi sul telefono</b><p class="muted small">Ti avvisiamo quando apri l'app e ci sono novità (scadenze certificato${admin ? ', nuovi iscritti' : ''}).</p><button class="btn primary sm" data-notif>Attiva notifiche</button></div>` : ''}
+          ${(() => { const qm = quoteMeseMancanti(); if (!admin || !qm.length) return ''; return `<section class="card pad qm"><h3 class="sec-t">💶 Quote di ${esc(nomeMese(meseCorrente()))} da pagare · ${qm.length}</h3>
+            <ul class="rlist">${qm.map(i => `<li><span class="inf"><b>${esc(nomeCompleto(i))}</b><small>${quoteArretrate(i).length > 1 ? esc(quoteArretrate(i).length + ' quote in sospeso') : 'Quota del mese'}</small></span><button class="btn sm ghost" data-qopen="${esc(i.id)}">Apri ›</button></li>`).join('')}</ul>
+            <p class="hint">Quando segni la quota come pagata nella scheda, l'iscritto sparisce da questo elenco.</p></section>`; })()}
           ${nl.length ? `<button class="btn ghost wide" data-tutti>Segna tutti come letti (${nl.length})</button>` : ''}
           ${lista.length ? '<ul class="avlist">' + lista.map(a => `<li class="${a.letto ? '' : 'new'}">
               <span class="av-ic">${AV_IC[a.tipo] || '🔔'}</span>
@@ -607,6 +626,12 @@
       if (tutti) tutti.onclick = async () => { await run(() => DB.segnaLetti(nonLetti().map(a => a.id))).catch(() => {}); S.d = await DB.loadAll(); draw(); };
       w.querySelectorAll('[data-aletto]').forEach(b => b.onclick = async () => { await run(() => DB.segnaLetti([b.dataset.aletto])).catch(() => {}); S.d = await DB.loadAll(); draw(); });
       w.querySelectorAll('[data-adel]').forEach(b => b.onclick = async () => { await run(() => DB.eliminaAvviso(b.dataset.adel)).catch(() => {}); S.d = await DB.loadAll(); draw(); });
+      w.querySelectorAll('[data-qopen]').forEach(b => b.onclick = () => {
+        openScheda(b.dataset.qopen);
+        // quando la scheda si chiude, ridisegna gli avvisi con i dati aggiornati
+        const obs = new MutationObserver(() => { if (document.querySelectorAll('.sheet').length === 1) { obs.disconnect(); draw(); } });
+        obs.observe(document.body, { childList: true });
+      });
       w.querySelectorAll('[data-aopen]').forEach(b => b.onclick = async () => {
         const [iid, aid] = b.dataset.aopen.split('|');
         const a = (S.d.avvisi || []).find(x => x.id === aid);
@@ -701,10 +726,10 @@
     const d = parse(e.data), costo = costoTxt(e.costo);
     let azioni = '';
     if (admin) azioni = `<button class="btn sm ghost" data-ev-list="${e.id}">${ic('isc')} Partecipanti · ${n}</button><button class="btn sm ghost" data-ev-edit="${e.id}">${ic('edit')} Modifica</button>`;
-    else if (!passato) azioni = io
-      ? `<button class="btn sm ok-b" data-ev-part="${e.id}|0">✓ Partecipo</button><span class="muted small">Tocca per annullare</span>`
-      : `<button class="btn sm primary" data-ev-part="${e.id}|1">Partecipo</button>`;
-    else azioni = io ? '<span class="tag green">Hai partecipato</span>' : '';
+    else if (!passato) azioni = (io
+      ? `<button class="btn sm ok-b" data-ev-part="${e.id}|0">✓ Partecipo</button>`
+      : `<button class="btn sm primary" data-ev-part="${e.id}|1">Partecipo</button>`) + `<button class="btn sm ghost" data-ev-chi="${e.id}">${ic('isc')} Chi partecipa · ${n}</button>`;
+    else azioni = (io ? '<span class="tag green">Hai partecipato</span>' : '') + `<button class="btn sm ghost" data-ev-chi="${e.id}">${ic('isc')} Chi ha partecipato · ${n}</button>`;
     return `<article class="card evcard${passato ? ' past' : ''}">
       <div class="ev-top"><div class="lc-date ev"><b>${d.getDate()}</b><small>${MESI[d.getMonth()].slice(0, 3)}</small></div>
         <div class="ev-tt"><h3>${esc(e.titolo)}</h3><small class="muted">${esc(GIORNI[d.getDay()])} ${d.getDate()} ${MESI[d.getMonth()].toLowerCase()} ${d.getFullYear()}</small></div>
@@ -771,6 +796,28 @@
       if (!saved) return;
       close(); S.day = o.data; await ricarica();
     };
+  }
+  async function openChiPartecipa(id) {
+    const e = (S.d.eventi || []).find(x => x.id === id); if (!e) return;
+    const w = document.createElement('div');
+    w.className = 'sheet';
+    document.body.appendChild(w); document.body.classList.add('noscroll');
+    const close = () => { w.remove(); document.body.classList.remove('noscroll'); };
+    const head = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Chi partecipa</b><span style="width:38px"></span></div>
+      <div class="sheet-body"><div class="pres-h"><div class="lc-date ev"><b>${parse(e.data).getDate()}</b><small>${MESI[parse(e.data).getMonth()].slice(0, 3)}</small></div>
+      <div><h2>${esc(e.titolo)}</h2><p class="muted">${esc(fmtLong(e.data))}${e.ora ? ' · ore ' + esc(hm(e.ora)) : ''}</p></div></div>`;
+    w.innerHTML = head + '<p class="muted pad">Caricamento…</p></div>';
+    w.querySelector('[data-x]').onclick = close;
+    let lista;
+    try { lista = await DB.partecipantiEvento(id); } catch (er) { w.querySelector('.sheet-body p.muted').textContent = er.message; return; }
+    const me = S.sess.iscritto, io = partecipo(e);
+    const nomeP = p => (p.soprannome || '').trim() || (p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : ''));
+    const avP = p => (p.soprannome || '').trim() ? p.soprannome.trim().slice(0, 2).toUpperCase() : (p.nome[0] || '') + (p.iniziale || '');
+    w.innerHTML = head + `<div class="counts big"><span class="cnt ok">${lista.length} ${lista.length === 1 ? 'partecipante' : 'partecipanti'}</span>${io ? '<span class="cnt">Ci sei anche tu</span>' : ''}</div>
+      ${lista.length ? '<ul class="pres-list ok">' + lista.map(p => `<li><span class="av sm">${esc(avP(p))}</span>${esc(nomeP(p))}</li>`).join('') + '</ul>' : '<p class="muted small">Ancora nessuno: sii il primo!</p>'}
+      </div>`;
+    w.querySelector('[data-x]').onclick = close;
+    void me;
   }
   function openEventoPartecipanti(id) {
     const e = S.d.eventi.find(x => x.id === id); if (!e) return;
@@ -903,7 +950,7 @@
       <ul class="ilist card">${list.length ? list.map(i => `
         <li class="${i.attivo === false ? 'dis' : ''}"><button class="irow" data-open="${i.id}">
           <span class="av">${esc(iniziali(i))}</span>
-          <span class="inf"><b>${esc((i.cognome ? i.cognome + ' ' : '') + i.nome)}${i.soprannome ? ' <small class="muted">“' + esc(i.soprannome) + '”</small>' : ''}</b><small>${i.attivo === false ? '<span class="tag gray">Frequenza disabilitata</span>' : esc(lezioniTesto(i))}</small></span>
+          <span class="inf"><b>${esc((i.cognome ? i.cognome + ' ' : '') + i.nome)}${i.soprannome ? ' <small class="muted">“' + esc(i.soprannome) + '”</small>' : ''}</b><small>${i.attivo === false ? '<span class="tag gray">Frequenza disabilitata</span>' : esc(lezioniTesto(i))}${DB.mode === 'online' ? (registrazioneDi(i) ? ' · 📱' : ' · <span class="noreg">non registrato</span>') : ''}</small></span>
           <span class="dots">${dot(statoCert(i), 'C')}${dot(statoIscr(i), 'I')}${dot(statoQuota(i), 'Q')}</span>
         </button></li>`).join('') : '<li class="muted pad">Nessun iscritto' + (S.q || S.filtro !== 'tutti' ? ' con questi criteri' : ': tocca + per aggiungerne uno') + '.</li>'}</ul>
       <button class="fab" id="b-new" aria-label="Nuovo iscritto">${ic('plus')}</button>`;
@@ -954,6 +1001,7 @@
             <a class="cbtn wa${tel ? '' : ' off'}" href="${tel ? 'https://wa.me/' + esc(waNumber(i.telefono)) : '#'}" target="_blank" rel="noopener">${WA}<span>WhatsApp</span></a>
             <a class="cbtn${i.email ? '' : ' off'}" href="${i.email ? 'mailto:' + esc(i.email) : '#'}">${ic('mail')}<span>Mail</span></a>
           </div>
+          ${(() => { const r = registrazioneDi(i); return r ? `<p class="regline ok">📱 Registrato nell'app${r.data ? ' dal ' + fmt(r.data) : ''}</p>` : `<p class="regline no">📵 Non ancora registrato nell'app${i.email ? '' : ' · manca l\'email'}</p>`; })()}
           <div class="card freq ${i.attivo !== false ? 'on' : 'off'}">
             <div><b>Frequenza ${i.attivo !== false ? 'abilitata' : 'disabilitata'}</b><small>${i.attivo !== false ? 'Compare nelle lezioni e può segnare assenze ed eventi.' : 'Non compare nelle lezioni né nelle presenze. I dati restano salvati.'}</small></div>
             <button type="button" class="switch${i.attivo !== false ? ' on' : ''}" data-freq role="switch" aria-checked="${i.attivo !== false}" aria-label="Abilita o disabilita la frequenza"><i></i></button>
@@ -1173,9 +1221,11 @@
     main.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => { S.filtro = S.filtro === b.dataset.filtro ? 'tutti' : b.dataset.filtro; render(); });
     const nb = $('#b-new'); if (nb) nb.onclick = () => openScheda(null);
     main.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => informativa());
+    main.querySelectorAll('[data-goquote]').forEach(b => b.onclick = () => { S.view = 'iscritti'; S.filtro = 'quota'; render(); window.scrollTo(0, 0); });
     main.querySelectorAll('[data-gocert]').forEach(b => b.onclick = () => { S.view = 'iscritti'; S.filtro = 'cert'; render(); window.scrollTo(0, 0); });
     const ne = $('#b-newev'); if (ne) ne.onclick = () => openEventoForm(null);
     main.querySelectorAll('[data-ev-edit]').forEach(b => b.onclick = () => openEventoForm(b.dataset.evEdit));
+    main.querySelectorAll('[data-ev-chi]').forEach(b => b.onclick = () => openChiPartecipa(b.dataset.evChi));
     main.querySelectorAll('[data-ev-list]').forEach(b => b.onclick = () => openEventoPartecipanti(b.dataset.evList));
     main.querySelectorAll('[data-ev-part]').forEach(b => b.onclick = async () => {
       const [eid, si] = b.dataset.evPart.split('|');

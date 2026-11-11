@@ -134,6 +134,10 @@
         if (si) mem.pe.push({ evento_id, iscritto_id, creato: new Date().toISOString() });
         save();
       },
+      async partecipantiEvento(id) {
+        const ids = mem.pe.filter(p => p.evento_id === id).map(p => p.iscritto_id);
+        return mem.iscritti.filter(i => ids.includes(i.id) && !i.prova).map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null }));
+      },
       async presenzeLezione(data, slot) {
         return mem.iscritti.filter(i => !i.prova && i.attivo !== false && (i.lezioni || []).includes(slot) && (!i.data_iscrizione || i.data_iscrizione <= data))
           .map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null,
@@ -317,6 +321,7 @@
         if (si) chk(await sb.from('partecipazioni_eventi').upsert({ evento_id, iscritto_id }, { onConflict: 'evento_id,iscritto_id', ignoreDuplicates: true }));
         else chk(await sb.from('partecipazioni_eventi').delete().eq('evento_id', evento_id).eq('iscritto_id', iscritto_id));
       },
+      async partecipantiEvento(id) { return chk(await sb.rpc('partecipanti_evento', { p_evento: id })) || []; },
       async presenzeLezione(data, slot) {
         return chk(await sb.rpc('presenze_lezione_v2', { p_data: data, p_slot: slot })) || [];
       },

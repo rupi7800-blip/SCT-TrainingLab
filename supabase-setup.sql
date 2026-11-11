@@ -445,3 +445,15 @@ alter table public.iscritti add column if not exists quota_attiva boolean not nu
 
 -- v1.7.2 · genera_avvisi_certificati() crea anche l'avviso "Certificato medico mancante"
 -- (una volta per iscritto, chiave A:/U:cert_mancante:<id>) — vedi migrazione "avviso_certificato_mancante".
+
+-- v1.8 · gli iscritti vedono chi partecipa agli eventi (soprannome o nome + iniziale)
+create or replace function public.partecipanti_evento(p_evento uuid)
+returns table (nome text, iniziale text, soprannome text)
+language sql stable security definer set search_path = public as $$
+  select i.nome, upper(left(coalesce(i.cognome, ''), 1)), nullif(trim(coalesce(i.soprannome, '')), '')
+  from partecipazioni_eventi p join iscritti i on i.id = p.iscritto_id
+  where (e_admin() or e_iscritto_attivo()) and p.evento_id = p_evento and not i.prova
+  order by coalesce(nullif(trim(i.soprannome), ''), i.nome), i.cognome;
+$$;
+revoke execute on function public.partecipanti_evento(uuid) from public, anon;
+grant execute on function public.partecipanti_evento(uuid) to authenticated;

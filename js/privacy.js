@@ -20,7 +20,7 @@ window.PRIVACY = {
       c) Contattarti per telefono, WhatsApp o email per comunicazioni organizzative — legittimo interesse dell'associazione (art. 6.1.f GDPR).</p>
       <p>Fornire i dati è necessario per partecipare: senza non è possibile gestire l'iscrizione.</p>
       <h4>4. Chi può vederli</h4>
-      <p>Tutti i dati sono visibili solo agli amministratori del Training Lab. Ogni iscritto vede i propri dati e, per le lezioni, l'elenco di chi sarà presente o assente indicato con il soprannome, se presente, oppure con nome e iniziale del cognome (es. "Giulia B."), senza il motivo dell'assenza. I dati non vengono diffusi né venduti.
+      <p>Tutti i dati sono visibili solo agli amministratori del Training Lab. Ogni iscritto vede i propri dati e, per le lezioni e gli eventi, l'elenco di chi sarà presente, assente o partecipa indicato con il soprannome, se presente, oppure con nome e iniziale del cognome (es. "Giulia B."), senza il motivo dell'assenza. I dati non vengono diffusi né venduti.
       Sono conservati sul servizio cloud Supabase (server nell'Unione Europea, Francoforte), che agisce come responsabile del trattamento.</p>
       <h4>5. Per quanto tempo</h4>
       <p>Per la durata dell'iscrizione e, in seguito, per il tempo richiesto dagli obblighi di legge e amministrativi dell'associazione; poi vengono cancellati.</p>
