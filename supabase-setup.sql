@@ -331,3 +331,51 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public.conteggio_partecipanti_eventi() from public, anon;
 grant execute on function public.conteggio_partecipanti_eventi() to authenticated;
+
+-- =====================================================================
+-- v1.5 · Soprannome, compleanni, presenze con soprannome
+-- =====================================================================
+alter table public.iscritti add column if not exists soprannome text check (soprannome is null or char_length(soprannome) <= 30);
+alter table public.registrazioni add column if not exists soprannome text check (soprannome is null or char_length(soprannome) <= 30);
+
+create or replace function public.nuovo_utente() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  m jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  dn date;
+  sp text := nullif(left(trim(coalesce(m->>'soprannome', '')), 30), '');
+begin
+  if not exists (select 1 from amministratori) then
+    insert into amministratori (user_id, email) values (new.id, new.email) on conflict do nothing;
+  end if;
+  begin dn := nullif(m->>'data_nascita', '')::date; exception when others then dn := null; end;
+  insert into registrazioni (user_id, email, nome, cognome, data_nascita, soprannome)
+  values (new.id, lower(new.email), left(coalesce(m->>'nome', ''), 60), left(coalesce(m->>'cognome', ''), 60), dn, sp)
+  on conflict (user_id) do nothing;
+  if coalesce(m->>'privacy_versione', '') <> '' then
+    insert into consensi_privacy (user_id, email, versione, accettato_il)
+    values (new.id, lower(new.email), left(m->>'privacy_versione', 20), now())
+    on conflict do nothing;
+  end if;
+  update iscritti set data_nascita = coalesce(data_nascita, dn), soprannome = coalesce(soprannome, sp)
+  where lower(email) = lower(new.email) and (dn is not null or sp is not null);
+  return new;
+end $$;
+revoke execute on function public.nuovo_utente() from public, anon, authenticated;
+
+create or replace function public.presenze_lezione_v2(p_data date, p_slot text)
+returns table (nome text, iniziale text, soprannome text, assente boolean)
+language sql stable security definer set search_path = public as $$
+  select i.nome,
+         upper(left(coalesce(i.cognome, ''), 1)),
+         nullif(trim(coalesce(i.soprannome, '')), ''),
+         exists (select 1 from assenze a where a.iscritto_id = i.id and a.data = p_data and a.slot = p_slot)
+  from iscritti i
+  where (e_admin() or e_iscritto_attivo())
+    and i.attivo
+    and p_slot = any (i.lezioni)
+    and (i.data_iscrizione is null or i.data_iscrizione <= p_data)
+  order by coalesce(nullif(trim(i.soprannome), ''), i.nome), i.cognome;
+$$;
+revoke execute on function public.presenze_lezione_v2(date, text) from public, anon;
+grant execute on function public.presenze_lezione_v2(date, text) to authenticated;

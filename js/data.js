@@ -111,7 +111,7 @@
       },
       async presenzeLezione(data, slot) {
         return mem.iscritti.filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) && (!i.data_iscrizione || i.data_iscrizione <= data))
-          .map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(),
+          .map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null,
             assente: mem.assenze.some(x => x.iscritto_id === i.id && x.data === data && x.slot === slot) }))
           .sort((a, b) => (a.nome + a.iniziale).localeCompare(b.nome + b.iniziale));
       },
@@ -131,7 +131,8 @@
           data_iscrizione: s.stagione_inizio, scadenza_iscrizione: k === 4 ? plus(20) : s.stagione_fine,
           certificato_scadenza: plus(n[3]), certificato_tipo: 'non_agonistico',
           lezioni: n[4] === 'both' ? ids.slice() : n[4] === 'first' ? ids.slice(0, 1) : ids.slice(1, 2),
-          attivo: true, note: ''
+          attivo: true, note: '', soprannome: k === 1 ? 'Ciccio' : '',
+          data_nascita: k === 0 ? (1990 + '-' + ymd(t).slice(5)) : (1980 + k) + '-0' + (k + 1) + '-1' + k
         }));
         const mese = ymd(t).slice(0, 7);
         mem.pagamenti = mem.iscritti.filter((x, k) => k % 3 !== 1).map(x => ({ iscritto_id: x.id, mese, importo: null, pagato_il: ymd(t) }));
@@ -170,7 +171,7 @@
       return r.data;
     }
     const clean = o => {
-      const keys = ['nome', 'cognome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
+      const keys = ['nome', 'cognome', 'soprannome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
         'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'note'];
       const r = {}; keys.forEach(k => { r[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
       r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false;
@@ -276,7 +277,7 @@
         else chk(await sb.from('partecipazioni_eventi').delete().eq('evento_id', evento_id).eq('iscritto_id', iscritto_id));
       },
       async presenzeLezione(data, slot) {
-        return chk(await sb.rpc('presenze_lezione', { p_data: data, p_slot: slot })) || [];
+        return chk(await sb.rpc('presenze_lezione_v2', { p_data: data, p_slot: slot })) || [];
       },
       async setPagamento(iscritto_id, mese, pagato, importo) {
         if (pagato) chk(await sb.from('pagamenti').upsert({ iscritto_id, mese, importo: importo || null, pagato_il: ymd(new Date()) }));

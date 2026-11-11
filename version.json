@@ -1,1 +1,1 @@
-{ "version": "1.4.0", "date": "2026-11-10", "notes": ["Nuova sezione Eventi: luogo con link a Maps, data, ora, costo e note", "Gli iscritti segnano \"Partecipo\"", "Eventi evidenziati in blu nel calendario"] }
+{ "version": "1.5.0", "date": "2026-11-11", "notes": ["Abilita o disabilita la frequenza di un iscritto con un interruttore", "Promemoria compleanni con auguri su WhatsApp", "Soprannome nell'anagrafica e nella registrazione", "Nelle presenze compare il soprannome, altrimenti nome e iniziale del cognome"] }

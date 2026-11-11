@@ -24,6 +24,34 @@
   function fmtLong(s) { const d = parse(s); return GIORNI[d.getDay()] + ' ' + d.getDate() + ' ' + MESI[d.getMonth()].toLowerCase(); }
   function nomeCompleto(i) { return (i.nome + ' ' + (i.cognome || '')).trim(); }
   function nomePuntato(i) { const c = (i.cognome || '').trim(); return i.nome + (c ? ' ' + c[0].toUpperCase() + '.' : ''); }
+  // nome mostrato nelle schermate condivise: soprannome se c'è, altrimenti nome + iniziale del cognome
+  function nomeVisibile(i) { const sp = (i.soprannome || '').trim(); return sp || nomePuntato(i); }
+  function inizialiVis(i) { const sp = (i.soprannome || '').trim(); return sp ? sp.slice(0, 2).toUpperCase() : iniziali(i); }
+  function compleannoIl(dn, ds) {
+    if (!dn) return false;
+    const md = dn.slice(5), y = Number(ds.slice(0, 4));
+    if (md === '02-29' && !((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) return ds.slice(5) === '02-28';
+    return ds.slice(5) === md;
+  }
+  function compleanniDel(ds) { return (S.d.iscritti || []).filter(i => i.attivo !== false && compleannoIl(i.data_nascita, ds)); }
+  function anniIl(dn, ds) { return Number(ds.slice(0, 4)) - Number(dn.slice(0, 4)); }
+  function prossimiCompleanni(giorni) {
+    const out = []; let ds = today();
+    for (let k = 0; k <= giorni; k++) { compleanniDel(ds).forEach(i => out.push({ i, ds, k })); ds = addDays(ds, 1); }
+    return out;
+  }
+  function augWa(i) {
+    const n = waNumber(i.telefono); if (!n) return '';
+    return 'https://wa.me/' + n + '?text=' + encodeURIComponent('Tanti auguri di buon compleanno ' + ((i.soprannome || '').trim() || i.nome) + '! 🎂 Dal Training Lab dello Sci Club Taino');
+  }
+  function compleanniHtml(lista, titolo) {
+    if (!lista.length) return '';
+    return `<section class="card pad bday"><h3 class="sec-t">🎂 ${esc(titolo)}</h3><ul class="rlist">${lista.map(x => {
+      const wa = augWa(x.i);
+      return `<li><span class="inf"><b>${esc(nomeCompleto(x.i))}${x.i.soprannome ? ' <small class="muted">“' + esc(x.i.soprannome) + '”</small>' : ''}</b><small>${x.k === 0 ? 'Oggi' : x.k === 1 ? 'Domani' : esc(fmtLong(x.ds))} · compie ${anniIl(x.i.data_nascita, x.ds)} anni</small></span>
+        ${wa ? `<a class="btn sm ok-b" href="${esc(wa)}" target="_blank" rel="noopener">Auguri</a>` : ''}<button class="icbtn" data-open="${esc(x.i.id)}" aria-label="Apri scheda">${ic('r')}</button></li>`;
+    }).join('')}</ul></section>`;
+  }
   function iniziali(i) { return ((i.nome || '?')[0] + ((i.cognome || '')[0] || '')).toUpperCase(); }
   function eta(dn) { if (!dn) return null; const t = parse(today()), n = parse(dn); let a = t.getFullYear() - n.getFullYear(); if (t.getMonth() < n.getMonth() || (t.getMonth() === n.getMonth() && t.getDate() < n.getDate())) a--; return a; }
   function consensoDi(email) { if (!email) return null; const e = email.toLowerCase(); return (S.d.consensi || []).filter(c => (c.email || '').toLowerCase() === e).sort((a, b) => b.accettato_il.localeCompare(a.accettato_il))[0] || null; }
@@ -171,6 +199,7 @@
           ${reg ? `
           <div class="two"><label>Nome *<input class="inp" name="nome" autocomplete="given-name" maxlength="60" required></label>
           <label>Cognome *<input class="inp" name="cognome" autocomplete="family-name" maxlength="60" required></label></div>
+          <label>Soprannome <small class="muted">(facoltativo)</small><input class="inp" name="soprannome" maxlength="30" placeholder="Come ti chiamano al Training Lab"></label>
           <label>Data di nascita *<input class="inp" type="date" name="nascita" max="${oggi}" min="1920-01-01" required></label>` : ''}
           <label>Email${reg ? ' *' : ''}<input class="inp" type="email" name="email" id="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
           <label>Password${reg ? ' * <small class="muted">(almeno 6 caratteri)</small>' : ''}${pwField('name="pw" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" minlength="6" required')}</label>
@@ -200,7 +229,7 @@
       if (!nascita || nascita > oggi || nascita < '1920-01-01') return toast('Inserisci una data di nascita valida', 'err');
       if (!f.privacy.checked) return toast('Per registrarti devi accettare l\'informativa privacy', 'err');
       try {
-        const r = await DB.signUp(email, pw, { nome, cognome, data_nascita: nascita, privacy_versione: window.PRIVACY.VERSIONE });
+        const r = await DB.signUp(email, pw, { nome, cognome, soprannome: f.soprannome.value.trim(), data_nascita: nascita, privacy_versione: window.PRIVACY.VERSIONE });
         if (ric) await memorizzaCredenziali(email, pw);
         if (r.needsConfirm) { toast('Ti abbiamo inviato una mail: conferma l\'indirizzo e poi accedi'); renderLogin(false); }
         else await carica();
@@ -356,12 +385,14 @@
         }
       }
       const nEv = eventiDel(ds).length;
+      if (admin && compleanniDel(ds).length) badge += '<i class="bdot">🎂</i>';
       if (nEv) cls.push(sl.length ? 'hasev' : 'evday');
       if (ds === today()) cls.push('today');
       if (ds === S.day) cls.push('sel');
       cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}</button>`;
     }
-    return `
+    const oggiB = admin ? compleanniHtml(compleanniDel(today()).map(i => ({ i, ds: today(), k: 0 })), 'Compleanni di oggi') : '';
+    return oggiB + `
       <section class="card cal">
         <div class="cal-h">
           <button class="icbtn" data-mon="-1" aria-label="Mese precedente">${ic('l')}</button>
@@ -370,10 +401,11 @@
         </div>
         <div class="grid wd">${GG.map(x => '<div>' + x + '</div>').join('')}</div>
         <div class="grid">${cells}</div>
-        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span><span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
+        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span>${admin ? '<span>🎂 Compleanno</span>' : ''}<span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
       </section>
       ${admin ? giornoAdmin(S.day) : giornoIscritto(S.day)}
-      ${eventiGiorno(S.day)}`;
+      ${eventiGiorno(S.day)}
+      ${admin ? compleanniHtml(compleanniDel(S.day).map(i => ({ i, ds: S.day, k: Math.round((parse(S.day) - parse(today())) / 86400000) })), 'Compleanni del giorno') : ''}`;
   }
 
   function giornoAdmin(ds) {
@@ -393,7 +425,7 @@
       h += '<ul class="plist">' + part.map(i => {
         const a = assenza(i.id, ds, s.id);
         return `<li class="${a ? 'abs' : ''}">
-          <button class="pname" data-open="${i.id}"><span class="av">${esc(iniziali(i))}</span><span><b>${esc(nomePuntato(i))}</b>${a ? `<small>Assente${a.nota ? ' · ' + esc(a.nota) : ''}</small>` : '<small>Presente</small>'}</span></button>
+          <button class="pname" data-open="${i.id}"><span class="av">${esc(inizialiVis(i))}</span><span><b>${esc(nomeVisibile(i))}</b>${a ? `<small>Assente${a.nota ? ' · ' + esc(a.nota) : ''}</small>` : '<small>Presente</small>'}</span></button>
           <span class="dots">${dot(statoCert(i), 'C')}${dot(statoIscr(i), 'I')}${dot(statoQuota(i), 'Q')}</span>
           <button class="pill ${a ? 'ko' : 'ok'}" data-toggle="${i.id}|${s.id}" aria-label="Cambia presenza">${a ? '✕' : '✓'}</button>
         </li>`;
@@ -452,16 +484,18 @@
     let lista;
     try {
       lista = admin
-        ? partecipanti(ds, slotId).map(i => ({ id: i.id, nome: i.nome, iniziale: (i.cognome || '').trim().slice(0, 1).toUpperCase(), assente: !!assenza(i.id, ds, slotId) }))
+        ? partecipanti(ds, slotId).map(i => ({ id: i.id, nome: i.nome, iniziale: (i.cognome || '').trim().slice(0, 1).toUpperCase(), soprannome: i.soprannome, assente: !!assenza(i.id, ds, slotId) }))
         : await DB.presenzeLezione(ds, slotId);
     }
     catch (e) { w.querySelector('.sheet-body').innerHTML = titolo + `<p class="muted pad">${esc(e.message)}</p>`; return; }
-    const nomeP = p => esc(p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : ''));
+    const nomeP = p => esc((p.soprannome || '').trim() || (p.nome + (p.iniziale ? ' ' + p.iniziale + '.' : '')));
+    const avP = p => (p.soprannome || '').trim() ? p.soprannome.trim().slice(0, 2).toUpperCase() : (p.nome[0] || '') + (p.iniziale || '');
+    lista.sort((a, b) => nomeP(a).localeCompare(nomeP(b)));
     const pres = lista.filter(p => !p.assente), ass = lista.filter(p => p.assente);
     const futura = ds >= today();
     const li = (arr, cls) => arr.length ? '<ul class="pres-list ' + cls + '">' + arr.map(p => p.id
-        ? `<li><button class="pres-row" data-popen="${esc(p.id)}"><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span><span class="pn">${nomeP(p)}</span><span class="chev">›</span></button></li>`
-        : `<li><span class="av sm">${esc((p.nome[0] || '') + (p.iniziale || ''))}</span>${nomeP(p)}</li>`).join('') + '</ul>' : '<p class="muted small">Nessuno</p>';
+        ? `<li><button class="pres-row" data-popen="${esc(p.id)}"><span class="av sm">${esc(avP(p))}</span><span class="pn">${nomeP(p)}</span><span class="chev">›</span></button></li>`
+        : `<li><span class="av sm">${esc(avP(p))}</span>${nomeP(p)}</li>`).join('') + '</ul>' : '<p class="muted small">Nessuno</p>';
     w.querySelector('.sheet-body').innerHTML = titolo + `
       <div class="counts big"><span class="cnt ok">${pres.length} ${futura ? (pres.length === 1 ? 'sarà presente' : 'saranno presenti') : (pres.length === 1 ? 'presente' : 'presenti')}</span><span class="cnt ko">${ass.length} ${ass.length === 1 ? 'assente' : 'assenti'}</span></div>
       <h3 class="sec-t">${futura ? 'Ci saranno' : 'Presenti'} · ${pres.length}</h3>${li(pres, 'ok')}
@@ -580,7 +614,7 @@
           <div><h2>${esc(e.titolo)}</h2><p class="muted">${esc(fmtLong(e.data))}${e.ora ? ' · ore ' + esc(hm(e.ora)) : ''}</p></div></div>
         <div class="counts big"><span class="cnt ok">${tot} ${tot === 1 ? 'partecipante' : 'partecipanti'}</span>${costo ? `<span class="cnt">Totale quote € ${(tot * costo).toLocaleString('it-IT', { minimumFractionDigits: 2 })}</span>` : ''}</div>
         <h3 class="sec-t">Partecipano · ${tot}</h3>
-        ${tot ? '<ul class="pres-list ok">' + lista.map(i => `<li><button class="pres-row" data-popen="${esc(i.id)}"><span class="av sm">${esc(iniziali(i))}</span><span class="pn">${esc(nomePuntato(i))}</span><span class="chev">›</span></button></li>`).join('') + '</ul>' : '<p class="muted small">Ancora nessuno.</p>'}
+        ${tot ? '<ul class="pres-list ok">' + lista.map(i => `<li><button class="pres-row" data-popen="${esc(i.id)}"><span class="av sm">${esc(inizialiVis(i))}</span><span class="pn">${esc(nomeVisibile(i))}</span><span class="chev">›</span></button></li>`).join('') + '</ul>' : '<p class="muted small">Ancora nessuno.</p>'}
         ${altri.length ? `<h3 class="sec-t">Aggiungi un iscritto</h3><select class="inp" id="ev-add"><option value="">Scegli…</option>${altri.map(i => `<option value="${esc(i.id)}">${esc(nomeCompleto(i))}</option>`).join('')}</select>` : ''}
         <p class="hint">Tocca un nome per aprire la scheda.</p>
       </div>`;
@@ -603,7 +637,8 @@
       slotsDel(ds).filter(s => (me.lezioni || []).includes(s.id)).forEach(s => out.push([ds, s]));
       ds = addDays(ds, 1);
     }
-    return `<section class="hello"><h2>Ciao ${esc(me.nome)}!</h2>
+    const bd = compleannoIl(me.data_nascita, today());
+    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
       <p class="muted">Risulti sempre presente: se non puoi venire, segnala l'assenza.</p></section>
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
@@ -622,6 +657,7 @@
     return `<section class="card pad">
       <div class="sch-head"><span class="av big">${esc(iniziali(me))}</span><div><h2>${esc(nomeCompleto(me))}</h2><p class="muted">${esc(lezioniTesto(me))}</p></div></div>
       <dl class="info">
+        ${me.soprannome ? `<dt>Soprannome</dt><dd>${esc(me.soprannome)}</dd>` : ''}
         <dt>Data di nascita</dt><dd>${fmt(me.data_nascita)}</dd>
         <dt>Telefono</dt><dd>${esc(me.telefono || '—')}</dd>
         <dt>Email</dt><dd>${esc(me.email || '—')}</dd>
@@ -657,14 +693,15 @@
       <ul class="rlist">${nuove.map(r => `<li><span class="inf"><b>${esc((r.cognome + ' ' + r.nome).trim() || r.email)}</b><small>${esc(r.email)}${r.data_nascita ? ' · nato/a il ' + fmt(r.data_nascita) : ''}</small></span>
       <button class="btn sm primary" data-reg="${esc(r.user_id)}">Crea scheda</button></li>`).join('')}</ul>
       <p class="hint">Si sono registrati nell'app ma non hanno ancora una scheda: creala e potranno entrare.</p></section>` : '';
-    return reqHtml + `
+    const bdays = compleanniHtml(prossimiCompleanni(7), 'Compleanni nei prossimi 7 giorni');
+    return reqHtml + bdays + `
       <div class="search"><input class="inp" id="q" type="search" placeholder="Cerca per nome, telefono, email…" value="${esc(S.q)}"></div>
-      <div class="chips">${f('tutti', 'Attivi', all.filter(i => i.attivo !== false).length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Non attivi')}</div>
+      <div class="chips">${f('tutti', 'Attivi', all.filter(i => i.attivo !== false).length)}${f('cert', 'Certificati', cnt.cert)}${f('iscr', 'Iscrizioni', cnt.iscr)}${f('quota', 'Quote', cnt.quota)}${f('inattivi', 'Disabilitati', all.filter(i => i.attivo === false).length)}</div>
       <div class="legend l2"><span><i class="dot green">C</i>Certificato</span><span><i class="dot green">I</i>Iscrizione</span><span><i class="dot green">Q</i>Quota mese</span></div>
       <ul class="ilist card">${list.length ? list.map(i => `
         <li><button class="irow" data-open="${i.id}">
           <span class="av">${esc(iniziali(i))}</span>
-          <span class="inf"><b>${esc((i.cognome ? i.cognome + ' ' : '') + i.nome)}</b><small>${esc(lezioniTesto(i))}</small></span>
+          <span class="inf"><b>${esc((i.cognome ? i.cognome + ' ' : '') + i.nome)}${i.soprannome ? ' <small class="muted">“' + esc(i.soprannome) + '”</small>' : ''}</b><small>${i.attivo === false ? '<span class="tag gray">Frequenza disabilitata</span>' : esc(lezioniTesto(i))}</small></span>
           <span class="dots">${dot(statoCert(i), 'C')}${dot(statoIscr(i), 'I')}${dot(statoQuota(i), 'Q')}</span>
         </button></li>`).join('') : '<li class="muted pad">Nessun iscritto' + (S.q || S.filtro !== 'tutti' ? ' con questi criteri' : ': tocca + per aggiungerne uno') + '.</li>'}</ul>
       <button class="fab" id="b-new" aria-label="Nuovo iscritto">${ic('plus')}</button>`;
@@ -690,7 +727,7 @@
     const st = S.d.settings;
     const i = id ? JSON.parse(JSON.stringify(S.d.iscritti.find(x => x.id === id))) : {
       nome: '', cognome: '', telefono: '', email: '', data_iscrizione: today(), scadenza_iscrizione: st.stagione_fine,
-      certificato_scadenza: '', certificato_tipo: 'non_agonistico', lezioni: st.slots.map(s => s.id), attivo: true, note: '', data_nascita: ''
+      certificato_scadenza: '', certificato_tipo: 'non_agonistico', lezioni: st.slots.map(s => s.id), attivo: true, note: '', data_nascita: '', soprannome: ''
     };
     if (!id && prefill) Object.assign(i, prefill);
     if (!i) return;
@@ -713,12 +750,19 @@
             <a class="cbtn${tel ? '' : ' off'}" href="${tel ? 'tel:' + esc(tel) : '#'}">${ic('tel')}<span>Chiama</span></a>
             <a class="cbtn wa${tel ? '' : ' off'}" href="${tel ? 'https://wa.me/' + esc(waNumber(i.telefono)) : '#'}" target="_blank" rel="noopener">${WA}<span>WhatsApp</span></a>
             <a class="cbtn${i.email ? '' : ' off'}" href="${i.email ? 'mailto:' + esc(i.email) : '#'}">${ic('mail')}<span>Mail</span></a>
-          </div>${statoCards(i)}
+          </div>
+          <div class="card freq ${i.attivo !== false ? 'on' : 'off'}">
+            <div><b>Frequenza ${i.attivo !== false ? 'abilitata' : 'disabilitata'}</b><small>${i.attivo !== false ? 'Compare nelle lezioni e può segnare assenze ed eventi.' : 'Non compare nelle lezioni né nelle presenze. I dati restano salvati.'}</small></div>
+            <button type="button" class="switch${i.attivo !== false ? ' on' : ''}" data-freq role="switch" aria-checked="${i.attivo !== false}" aria-label="Abilita o disabilita la frequenza"><i></i></button>
+          </div>
+          ${compleannoIl(i.data_nascita, today()) ? `<p class="bday-line">🎂 Oggi compie ${anniIl(i.data_nascita, today())} anni!${augWa(i) ? ` <a href="${esc(augWa(i))}" target="_blank" rel="noopener">Manda gli auguri su WhatsApp ›</a>` : ''}</p>` : ''}
+          ${statoCards(i)}
           <p class="privline">${(() => { const c = consensoDi(i.email); return DB.mode === 'demo' ? '' : c ? '🔒 Privacy accettata il ' + fmt(c.accettato_il.slice(0, 10)) + ' (v. ' + esc(c.versione) + ')' : '🔒 Privacy: non ancora accettata (l\'iscritto non si è ancora registrato nell\'app)'; })()}</p>` : ''}
           <form id="f-sch" class="form">
             <h3 class="sec-t">Anagrafica</h3>
             <div class="two"><label>Nome *<input class="inp" name="nome" required maxlength="60" value="${esc(i.nome)}"></label>
             <label>Cognome<input class="inp" name="cognome" maxlength="60" value="${esc(i.cognome)}"></label></div>
+            <label>Soprannome <small class="muted">(facoltativo: compare al posto del nome nelle presenze)</small><input class="inp" name="soprannome" maxlength="30" value="${esc(i.soprannome || '')}" placeholder="es. Gigi"></label>
             <label>Data di nascita${i.data_nascita && eta(i.data_nascita) != null ? ' <small class="muted">(' + eta(i.data_nascita) + ' anni)</small>' : ''}<input class="inp" type="date" name="data_nascita" max="${today()}" value="${esc(i.data_nascita || '')}"></label>
             <label>Telefono<input class="inp" name="telefono" type="tel" maxlength="30" placeholder="es. 347 1234567" value="${esc(i.telefono || '')}"></label>
             <label>Email<input class="inp" name="email" type="email" maxlength="120" value="${esc(i.email || '')}"><small class="hint">Serve all'iscritto per accedere all'app e segnalare le assenze.</small></label>
@@ -738,7 +782,7 @@
               <option value="agonistico"${i.certificato_tipo === 'agonistico' ? ' selected' : ''}>Agonistico</option></select></label>
             <label>Scadenza<input class="inp" type="date" name="certificato_scadenza" value="${esc(i.certificato_scadenza || '')}"></label></div>
 
-            <label class="check"><input type="checkbox" name="attivo"${i.attivo !== false ? ' checked' : ''}> Iscritto attivo (compare nelle lezioni)</label>
+            <input type="checkbox" name="attivo" hidden${i.attivo !== false ? ' checked' : ''}>
             <label>Note<textarea class="inp" name="note" rows="2" maxlength="1000">${esc(i.note || '')}</textarea></label>
           </form>
 
@@ -753,10 +797,19 @@
       const f = w.querySelector('#f-sch');
       const sync = () => {
         const fd = new FormData(f);
-        ['nome', 'cognome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione', 'certificato_tipo', 'certificato_scadenza', 'note'].forEach(k => i[k] = (fd.get(k) || '').toString().trim());
+        ['nome', 'cognome', 'soprannome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione', 'certificato_tipo', 'certificato_scadenza', 'note'].forEach(k => i[k] = (fd.get(k) || '').toString().trim());
         i.attivo = f.attivo.checked;
       };
       w.querySelector('[data-x]').onclick = close;
+      const fq = w.querySelector('[data-freq]');
+      if (fq) fq.onclick = async () => {
+        sync();
+        const nuovo = i.attivo === false;
+        if (!nuovo && !await confirmBox('Disabilitare la frequenza?', nomeCompleto(i) + ' non comparirà più nelle lezioni e nelle presenze finché non la riabiliti. Dati, quote e storico restano salvati.', 'Disabilita')) return;
+        const ok = await run(() => DB.saveIscritto(Object.assign({}, S.d.iscritti.find(x => x.id === id), { attivo: nuovo })), nuovo ? 'Frequenza abilitata' : 'Frequenza disabilitata').catch(() => null);
+        if (!ok) return;
+        i.attivo = nuovo; S.d = await DB.loadAll(); draw(); render();
+      };
       w.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
         sync(); const s = b.dataset.slot; i.lezioni = i.lezioni || [];
         i.lezioni = i.lezioni.includes(s) ? i.lezioni.filter(x => x !== s) : i.lezioni.concat(s); draw();
@@ -907,7 +960,7 @@
     });
     main.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => {
       const r = (S.d.registrazioni || []).find(x => x.user_id === b.dataset.reg);
-      if (r) openScheda(null, { nome: r.nome, cognome: r.cognome, email: r.email, data_nascita: r.data_nascita || '' });
+      if (r) openScheda(null, { nome: r.nome, cognome: r.cognome, soprannome: r.soprannome || '', email: r.email, data_nascita: r.data_nascita || '' });
     });
 
     // impostazioni
