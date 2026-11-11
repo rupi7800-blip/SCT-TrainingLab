@@ -1,1 +1,1 @@
-{ "version": "1.8.1", "date": "2026-11-11", "notes": ["Eventi: i nomi di chi partecipa compaiono direttamente nel riquadro dell'evento"] }
+{ "version": "1.8.2", "date": "2026-11-11", "notes": ["Tasto Aggiorna sempre visibile quando c'è una nuova versione", "Pulsante Controlla aggiornamenti nel Profilo e nelle Impostazioni", "Eventi: nomi dei partecipanti nel riquadro dell'evento", "Avvisi quote del mese e stato registrazione (amministratore)"] }

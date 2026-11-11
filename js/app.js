@@ -407,9 +407,26 @@
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.view = b.dataset.tab; render(); window.scrollTo(0, 0); });
     if (DB.mode === 'demo') bindDemo();
     bind();
-    // ricolloca il tasto Aggiorna se già comparso
-    const ub = document.querySelector('.upd-btn'), slot = document.querySelector('[data-update-slot]');
-    if (ub && slot && !slot.contains(ub)) { ub.classList.remove('upd-float'); slot.appendChild(ub); }
+    piazzaAggiorna();
+  }
+  // Il tasto "Aggiorna" viene creato una sola volta da aggiornamenti.js: teniamo il riferimento
+  // e lo rimettiamo nell'intestazione a ogni ridisegno (altrimenti sparirebbe al primo tocco).
+  let tastoAggiorna = null;
+  function piazzaAggiorna() {
+    const ub = tastoAggiorna || document.querySelector('.upd-btn');
+    if (!ub) return;
+    tastoAggiorna = ub;
+    const slot = document.querySelector('[data-update-slot]');
+    if (slot) { if (!slot.contains(ub)) { ub.classList.remove('upd-float'); slot.appendChild(ub); } }
+    else if (!document.body.contains(ub)) { ub.classList.add('upd-float'); document.body.appendChild(ub); }
+  }
+  async function controllaAggiornamenti(b) {
+    if (!window.AppUpdate) return toast('Controllo non disponibile', 'err');
+    if (b) { b.disabled = true; b.textContent = 'Controllo in corso…'; }
+    const nuovo = await window.AppUpdate.check();
+    if (nuovo) { window.AppUpdate.apply(); return; }
+    if (b) { b.disabled = false; b.textContent = 'Controlla aggiornamenti'; }
+    toast('Hai già l\'ultima versione (' + window.APP_VERSION + ')');
   }
 
   function demoBar() {
@@ -902,6 +919,7 @@
       ${quoteGrid(me)}
       ${installHtml()}
       ${DB.mode === 'online' && !S.sess.anteprima ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
+      <button class="btn ghost wide" data-checkupd>Controlla aggiornamenti</button>
       <p class="ver">Versione ${esc(window.APP_VERSION)}</p>`;
   }
 
@@ -1142,6 +1160,7 @@
           <p class="hint">Modalità prova: per condividere i dati con gli iscritti collega Supabase (vedi README).</p>`
           : `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>`}
         <button class="btn ghost wide" data-inf>Informativa privacy</button>
+        <button class="btn ghost wide" data-checkupd>Controlla aggiornamenti</button>
         <p class="ver">S.C.T. TrainingLab · versione ${esc(window.APP_VERSION)}</p>
       </section>`;
   }
@@ -1221,6 +1240,7 @@
     main.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => { S.filtro = S.filtro === b.dataset.filtro ? 'tutti' : b.dataset.filtro; render(); });
     const nb = $('#b-new'); if (nb) nb.onclick = () => openScheda(null);
     main.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => informativa());
+    main.querySelectorAll('[data-checkupd]').forEach(b => b.onclick = () => controllaAggiornamenti(b));
     main.querySelectorAll('[data-goquote]').forEach(b => b.onclick = () => { S.view = 'iscritti'; S.filtro = 'quota'; render(); window.scrollTo(0, 0); });
     main.querySelectorAll('[data-gocert]').forEach(b => b.onclick = () => { S.view = 'iscritti'; S.filtro = 'cert'; render(); window.scrollTo(0, 0); });
     const ne = $('#b-newev'); if (ne) ne.onclick = () => openEventoForm(null);
@@ -1296,10 +1316,7 @@
     DB.deleteIscritto = async id => { await origDel(id); setTimeout(refreshDemoList, 0); };
   }
 
-  document.addEventListener('app-update-available', () => {
-    const ub = document.querySelector('.upd-btn'), slot = document.querySelector('[data-update-slot]');
-    if (ub && slot && !slot.contains(ub)) { ub.classList.remove('upd-float'); slot.appendChild(ub); }
-  });
+  document.addEventListener('app-update-available', () => { tastoAggiorna = null; piazzaAggiorna(); });
 
   boot().then(() => refreshDemoList());
 
