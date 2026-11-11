@@ -1,1 +1,1 @@
-{ "version": "1.7.0", "date": "2026-11-11", "notes": ["L'iscritto vede i suoi dati e può modificare nome, cognome e data di nascita", "Quote, iscrizione e certificato visibili all'iscritto con promemoria a ogni apertura", "Account di prova per vedere l'app come un iscritto", "Mesi del corso attivi e non attivi"] }
+{ "version": "1.7.1", "date": "2026-11-11", "notes": ["Scheda iscritto: interruttore per attivare o disattivare la quota mensile"] }

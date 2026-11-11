@@ -439,3 +439,6 @@ alter table public.iscritti add column if not exists prova boolean not null defa
 -- Funzione aggiorna_miei_dati(nome, cognome, data_nascita): l'iscritto modifica solo questi campi
 -- (avvisa l'amministratore). genera_avvisi_certificati(), presenze_lezione_v2() e nuovo_utente()
 -- escludono l'account di prova. Testo completo nella migrazione "dati_iscritto_prova_mesi".
+
+-- v1.7.1 · quota attivabile/disattivabile per iscritto
+alter table public.iscritti add column if not exists quota_attiva boolean not null default true;

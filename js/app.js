@@ -132,10 +132,12 @@
   }
   function pagato(id, mese) { return S.d.pagamenti.some(p => p.iscritto_id === id && p.mese === mese); }
   function quoteArretrate(i) {
+    if (i.quota_attiva === false) return [];
     const mc = meseCorrente(), da = (i.data_iscrizione || '').slice(0, 7);
     return mesiStagione().filter(m => m <= mc && meseAttivo(m) && (!da || m >= da) && !pagato(i.id, m));
   }
   function statoQuota(i) {
+    if (i.quota_attiva === false) return { c: 'off', t: 'Quota non dovuta' };
     const m = meseCorrente(), arr = quoteArretrate(i);
     if (arr.length > 1) return { c: 'red', t: arr.length + ' quote da pagare' };
     if (arr.length === 1) return { c: 'red', t: nomeMese(arr[0]) + ' da pagare' };
@@ -835,6 +837,7 @@
   }
 
   function quoteGrid(me) {
+    if (me.quota_attiva === false) return '<section class="card pad"><h3 class="sec-t">Quote mensili</h3><p class="muted">Per te la quota mensile non è dovuta.</p></section>';
     const mesi = mesiStagione(), mc = meseCorrente(), da = (me.data_iscrizione || '').slice(0, 7);
     if (!mesi.length) return '';
     return `<section class="card pad"><h3 class="sec-t">Le tue quote mensili${S.d.settings.quota_mensile ? ' · € ' + esc(S.d.settings.quota_mensile) : ''}</h3>
@@ -933,6 +936,10 @@
             <div><b>Frequenza ${i.attivo !== false ? 'abilitata' : 'disabilitata'}</b><small>${i.attivo !== false ? 'Compare nelle lezioni e può segnare assenze ed eventi.' : 'Non compare nelle lezioni né nelle presenze. I dati restano salvati.'}</small></div>
             <button type="button" class="switch${i.attivo !== false ? ' on' : ''}" data-freq role="switch" aria-checked="${i.attivo !== false}" aria-label="Abilita o disabilita la frequenza"><i></i></button>
           </div>
+          <div class="card freq ${i.quota_attiva !== false ? 'on' : 'off'}">
+            <div><b>Quota mensile ${i.quota_attiva !== false ? 'attiva' : 'disattivata'}</b><small>${i.quota_attiva !== false ? 'Deve pagare la quota ogni mese di corso.' : 'Non deve pagare la quota (vale per tutti i mesi).'}</small></div>
+            <button type="button" class="switch${i.quota_attiva !== false ? ' on' : ''}" data-quota role="switch" aria-checked="${i.quota_attiva !== false}" aria-label="Attiva o disattiva la quota"><i></i></button>
+          </div>
           ${compleannoIl(i.data_nascita, today()) ? `<p class="bday-line">🎂 Oggi compie ${anniIl(i.data_nascita, today())} anni!${augWa(i) ? ` <a href="${esc(augWa(i))}" target="_blank" rel="noopener">Manda gli auguri su WhatsApp ›</a>` : ''}</p>` : ''}
           ${statoCards(i)}
           <p class="privline">${(() => { const c = consensoDi(i.email); return DB.mode === 'demo' ? '' : c ? '🔒 Privacy accettata il ' + fmt(c.accettato_il.slice(0, 10)) + ' (v. ' + esc(c.versione) + ')' : '🔒 Privacy: non ancora accettata (l\'iscritto non si è ancora registrato nell\'app)'; })()}</p>` : ''}
@@ -964,10 +971,11 @@
             <label>Note riservate <small class="muted">(🔒 visibili solo a te)</small><textarea class="inp" name="note" rows="2" maxlength="1000">${esc(i.note || '')}</textarea></label>
           </form>
 
-          ${id ? `<h3 class="sec-t">Quote mensili${st.quota_mensile ? ' · € ' + esc(st.quota_mensile) : ''}</h3>
+          ${id && i.quota_attiva === false ? '<h3 class="sec-t">Quote mensili</h3><p class="muted card pad">Quota disattivata: questo iscritto non deve pagare.</p>' : ''}
+          ${id && i.quota_attiva !== false ? `<h3 class="sec-t">Quote mensili${st.quota_mensile ? ' · € ' + esc(st.quota_mensile) : ''}</h3>
           <div class="mesi">${mesi.map(m => meseAttivo(m) ? `<button type="button" class="mese${pagato(id, m) ? ' paid' : (m <= mc ? ' due' : '')}${m === mc ? ' cur' : ''}" data-mese="${m}"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>${pagato(id, m) ? '✓' : (m <= mc ? '✕' : '·')}</b></button>` : `<div class="mese off${m === mc ? ' cur' : ''}" title="Mese senza corso"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>—</b></div>`).join('')}</div>
-          <p class="hint">Tocca un mese per segnarlo pagato / non pagato.</p>
-          <h3 class="sec-t">Assenze segnalate</h3>
+          <p class="hint">Tocca un mese per segnarlo pagato / non pagato.</p>` : ''}
+          ${id ? `<h3 class="sec-t">Assenze segnalate</h3>
           ${ass.length ? '<ul class="alist">' + ass.slice(0, 30).map(a => { const s = st.slots.find(x => x.id === a.slot); return `<li><b>${fmt(a.data)}</b> ${esc(s ? s.nome : '')}${a.nota ? ' · ' + esc(a.nota) : ''}</li>`; }).join('') + '</ul>' : '<p class="muted">Nessuna assenza.</p>'}` : ''}
         </div>
         <div class="sheet-foot"><button class="btn primary big" id="b-save">${id ? 'Salva modifiche' : 'Aggiungi iscritto'}</button></div>`;
@@ -979,6 +987,14 @@
         i.attivo = f.attivo.checked;
       };
       w.querySelector('[data-x]').onclick = close;
+      const fqq = w.querySelector('[data-quota]');
+      if (fqq) fqq.onclick = async () => {
+        sync();
+        const nuovo = i.quota_attiva === false;
+        const ok = await run(() => DB.saveIscritto(Object.assign({}, S.d.iscritti.find(x => x.id === id), { quota_attiva: nuovo })), nuovo ? 'Quota attivata: deve pagare' : 'Quota disattivata: non deve pagare').catch(() => null);
+        if (!ok) return;
+        i.quota_attiva = nuovo; S.d = await DB.loadAll(); draw(); render();
+      };
       const fq = w.querySelector('[data-freq]');
       if (fq) fq.onclick = async () => {
         sync();

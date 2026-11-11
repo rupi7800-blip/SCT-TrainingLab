@@ -193,9 +193,9 @@
     }
     const clean = o => {
       const keys = ['nome', 'cognome', 'soprannome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
-        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'prova'];
+        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'prova', 'quota_attiva'];
       const r = {}; keys.forEach(k => { r[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
-      r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false; r.prova = r.prova === true;
+      r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false; r.prova = r.prova === true; r.quota_attiva = r.quota_attiva !== false;
       if (r.email) r.email = r.email.trim().toLowerCase();
       return r;
     };
