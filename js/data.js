@@ -88,6 +88,10 @@
         const P = window.PRIVACY || { VERSIONE: '1.0' };
         chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
       },
+      async aggiornaMieiDati(nome, cognome, data_nascita) {
+        const i = mem.iscritti.find(x => x.id === mem.vista); if (!i) throw new Error('Scheda non trovata');
+        Object.assign(i, { nome, cognome, data_nascita }); save();
+      },
       async segnaLetti(ids) { ids.forEach(x => { if (!mem.letti.includes(x)) mem.letti.push(x); }); save(); },
       async eliminaAvviso(id) { if (!mem.letti.includes(id)) mem.letti.push(id); save(); },
       async deleteIscritto(id) {
@@ -127,7 +131,7 @@
         save();
       },
       async presenzeLezione(data, slot) {
-        return mem.iscritti.filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) && (!i.data_iscrizione || i.data_iscrizione <= data))
+        return mem.iscritti.filter(i => !i.prova && i.attivo !== false && (i.lezioni || []).includes(slot) && (!i.data_iscrizione || i.data_iscrizione <= data))
           .map(i => ({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null,
             assente: mem.assenze.some(x => x.iscritto_id === i.id && x.data === data && x.slot === slot) }))
           .sort((a, b) => (a.nome + a.iniziale).localeCompare(b.nome + b.iniziale));
@@ -189,9 +193,9 @@
     }
     const clean = o => {
       const keys = ['nome', 'cognome', 'soprannome', 'data_nascita', 'telefono', 'email', 'data_iscrizione', 'scadenza_iscrizione',
-        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo'];
+        'certificato_scadenza', 'certificato_tipo', 'lezioni', 'attivo', 'prova'];
       const r = {}; keys.forEach(k => { r[k] = o[k] === '' || o[k] === undefined ? null : o[k]; });
-      r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false;
+      r.cognome = r.cognome || ''; r.lezioni = r.lezioni || []; r.attivo = r.attivo !== false; r.prova = r.prova === true;
       if (r.email) r.email = r.email.trim().toLowerCase();
       return r;
     };
@@ -287,6 +291,9 @@
           else chk(await sb.from('note_iscritti').delete().eq('iscritto_id', saved.id));
         }
         return saved;
+      },
+      async aggiornaMieiDati(nome, cognome, data_nascita) {
+        chk(await sb.rpc('aggiorna_miei_dati', { p_nome: nome, p_cognome: cognome, p_data_nascita: data_nascita || null }));
       },
       async segnaLetti(ids) { if (ids.length) chk(await sb.from('avvisi').update({ letto: true }).in('id', ids)); },
       async eliminaAvviso(id) { chk(await sb.from('avvisi').delete().eq('id', id)); },

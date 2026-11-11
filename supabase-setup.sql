@@ -430,3 +430,12 @@ grant select, insert, update, delete on public.note_iscritti to authenticated;
 alter policy "pag leggi" on public.pagamenti using (e_admin());
 -- Le funzioni genera_avvisi_certificati() e nuovo_utente() aggiornate, e il job pg_cron
 -- 'sct-avvisi-certificati' (ogni giorno alle 06:00 UTC), sono nella migrazione del progetto.
+
+-- =====================================================================
+-- v1.7 · Quote visibili all'iscritto, modifica dati personali, account di prova
+-- =====================================================================
+alter policy "pag leggi" on public.pagamenti using (e_admin() or mio_iscritto(iscritto_id));
+alter table public.iscritti add column if not exists prova boolean not null default false;
+-- Funzione aggiorna_miei_dati(nome, cognome, data_nascita): l'iscritto modifica solo questi campi
+-- (avvisa l'amministratore). genera_avvisi_certificati(), presenze_lezione_v2() e nuovo_utente()
+-- escludono l'account di prova. Testo completo nella migrazione "dati_iscritto_prova_mesi".

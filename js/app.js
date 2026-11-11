@@ -33,7 +33,9 @@
     if (md === '02-29' && !((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) return ds.slice(5) === '02-28';
     return ds.slice(5) === md;
   }
-  function compleanniDel(ds) { return (S.d.iscritti || []).filter(i => i.attivo !== false && compleannoIl(i.data_nascita, ds)); }
+  function veri() { return (S.d.iscritti || []).filter(i => !i.prova); }
+  function meseAttivo(m) { return !((S.d.settings.mesi_off || []).includes(m)); }
+  function compleanniDel(ds) { return veri().filter(i => i.attivo !== false && compleannoIl(i.data_nascita, ds)); }
   function anniIl(dn, ds) { return Number(ds.slice(0, 4)) - Number(dn.slice(0, 4)); }
   function prossimiCompleanni(giorni) {
     const out = []; let ds = today();
@@ -129,9 +131,16 @@
     return s;
   }
   function pagato(id, mese) { return S.d.pagamenti.some(p => p.iscritto_id === id && p.mese === mese); }
+  function quoteArretrate(i) {
+    const mc = meseCorrente(), da = (i.data_iscrizione || '').slice(0, 7);
+    return mesiStagione().filter(m => m <= mc && meseAttivo(m) && (!da || m >= da) && !pagato(i.id, m));
+  }
   function statoQuota(i) {
-    const m = meseCorrente();
-    return pagato(i.id, m) ? { c: 'green', t: nomeMese(m) + ' pagata' } : { c: 'red', t: nomeMese(m) + ' da pagare' };
+    const m = meseCorrente(), arr = quoteArretrate(i);
+    if (arr.length > 1) return { c: 'red', t: arr.length + ' quote da pagare' };
+    if (arr.length === 1) return { c: 'red', t: nomeMese(arr[0]) + ' da pagare' };
+    if (!meseAttivo(m)) return { c: 'off', t: nomeMese(m) + ': niente corso' };
+    return { c: 'green', t: nomeMese(m) + ' pagata' };
   }
 
   /* --------------------------------------------------------------- lezioni */
@@ -140,14 +149,14 @@
     return (!s.stagione_inizio || ds >= s.stagione_inizio) && (!s.stagione_fine || ds <= s.stagione_fine);
   }
   function slotsDel(ds) {
-    if (!inStagione(ds)) return [];
+    if (!inStagione(ds) || !meseAttivo(ds.slice(0, 7))) return [];
     const g = parse(ds).getDay();
     return S.d.settings.slots.filter(s => Number(s.giorno) === g).sort((a, b) => a.inizio.localeCompare(b.inizio));
   }
   function annullata(ds, slot) { return S.d.annullamenti.find(a => a.data === ds && a.slot === slot); }
   function assenza(iid, ds, slot) { return S.d.assenze.find(a => a.iscritto_id === iid && a.data === ds && a.slot === slot); }
   function partecipanti(ds, slot) {
-    return S.d.iscritti.filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) &&
+    return veri().filter(i => i.attivo !== false && (i.lezioni || []).includes(slot) &&
       (!i.data_iscrizione || i.data_iscrizione <= ds))
       .sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
   }
@@ -179,11 +188,36 @@
       if (!S.view) S.view = S.sess.role === 'admin' ? 'cal' : 'lezioni';
       render();
       notificaNuovi();
+      promemoriaApertura();
     } catch (e) {
       app.innerHTML = '<div class="center-msg"><h2>Errore</h2><p>' + esc(e.message) + '</p><button class="btn primary" onclick="location.reload()">Riprova</button></div>';
     } finally { S._loading = false; }
   }
-  async function ricarica() { S.d = await DB.loadAll(); if (S.sess.role === 'iscritto') S.sess = await DB.session(); render(); }
+  async function ricarica() {
+    S.d = await DB.loadAll();
+    if (S.sess.anteprima) { const p = S.d.iscritti.find(i => i.id === S.sess.iscritto.id); if (p) S.sess.iscritto = p; }
+    else if (S.sess.role === 'iscritto') S.sess = await DB.session();
+    render();
+  }
+  async function entraAnteprima() {
+    let p = S.d.iscritti.find(i => i.prova);
+    if (!p) {
+      const st = S.d.settings;
+      p = await run(() => DB.saveIscritto({ nome: 'Prova', cognome: 'Iscritto', soprannome: '', prova: true, attivo: true, email: null,
+        data_iscrizione: today(), scadenza_iscrizione: st.stagione_fine, certificato_tipo: 'non_agonistico', certificato_scadenza: addDays(today(), 20),
+        lezioni: st.slots.map(x => x.id), data_nascita: null }), 'Account di prova creato').catch(() => null);
+      if (!p) return;
+      S.d = await DB.loadAll(); p = S.d.iscritti.find(i => i.id === p.id) || p;
+    }
+    S.realSess = S.sess;
+    S.sess = { role: 'iscritto', email: '', iscritto: p, anteprima: true };
+    S.view = 'lezioni'; render(); window.scrollTo(0, 0);
+    promemoriaApertura();
+  }
+  function esciAnteprima() {
+    if (!S.realSess) return;
+    S.sess = S.realSess; S.realSess = null; S.view = 'imp'; render(); window.scrollTo(0, 0);
+  }
 
   /* ------------------------------------------------------------- accesso */
   function informativa() {
@@ -335,7 +369,8 @@
     else if (S.view === 'lezioni') body = viewLezioni();
     else if (S.view === 'me') body = viewMe();
     else if (S.view === 'eventi') body = viewEventi();
-    app.innerHTML = demo + `
+    const ante = S.sess.anteprima ? `<div class="ante">👁 Anteprima come iscritto (account di prova)<button class="btn sm" id="b-esci-ante">Torna amministratore</button></div>` : '';
+    app.innerHTML = demo + ante + `
       <header class="top">
         <img src="icons/logo.png" alt="" class="top-logo">
         <div class="top-t"><b>Training Lab</b><small>${admin ? 'Amministratore' : esc(nomeCompleto(S.sess.iscritto || { nome: '' }))}</small></div>
@@ -345,6 +380,7 @@
       <main id="main">${body}</main>
       <nav class="tabs">${tabs.map(t => `<button class="tab${S.view === t[0] ? ' on' : ''}" data-tab="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</nav>`;
     const bav = $('#b-avvisi'); if (bav) bav.onclick = openAvvisi;
+    const bea = $('#b-esci-ante'); if (bea) bea.onclick = esciAnteprima;
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.view = b.dataset.tab; render(); window.scrollTo(0, 0); });
     if (DB.mode === 'demo') bindDemo();
     bind();
@@ -403,6 +439,7 @@
           <h2>${MESI[mo]} ${y}</h2>
           <button class="icbtn" data-mon="1" aria-label="Mese successivo">${ic('r')}</button>
         </div>
+        ${inStagione(ymd(m)) || inStagione(y + '-' + pad(mo + 1) + '-' + pad(new Date(y, mo + 1, 0).getDate())) ? (meseAttivo(y + '-' + pad(mo + 1)) ? '' : '<p class="m-off">Mese senza corso: nessun allenamento</p>') : ''}
         <div class="grid wd">${GG.map(x => '<div>' + x + '</div>').join('')}</div>
         <div class="grid">${cells}</div>
         <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span>${admin ? '<span>🎂 Compleanno</span>' : ''}<span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
@@ -511,7 +548,12 @@
 
 
   /* ------------------------------------------------------------------ avvisi */
-  function nonLetti() { return (S.d && S.d.avvisi || []).filter(a => !a.letto); }
+  function avvisiVisibili() {
+    const av = (S.d && S.d.avvisi) || [];
+    if (S.sess.role === 'admin') return av.filter(a => a.per_admin);
+    const me = S.sess.iscritto; return me ? av.filter(a => a.destinatario_iscritto === me.id) : [];
+  }
+  function nonLetti() { return avvisiVisibili().filter(a => !a.letto); }
   const AV_IC = { cert_30: '🟡', cert_15: '🟠', cert_scaduto: '🔴', nuovo: '🆕', collegato: '🔗', doppione: '⚠️' };
   function openAvvisi() {
     const w = document.createElement('div');
@@ -520,7 +562,7 @@
     const close = () => { w.remove(); document.body.classList.remove('noscroll'); render(); };
     const admin = S.sess.role === 'admin';
     const draw = () => {
-      const lista = S.d.avvisi || [], nl = nonLetti();
+      const lista = avvisiVisibili(), nl = nonLetti();
       const notifOk = 'Notification' in window && Notification.permission === 'granted';
       w.innerHTML = `<div class="sheet-top"><button class="icbtn" data-x aria-label="Chiudi">${ic('back')}</button><b>Avvisi</b><span style="width:38px"></span></div>
         <div class="sheet-body">
@@ -572,17 +614,47 @@
   // banner fisso per i certificati scaduti
   function bannerCertificati() {
     if (S.sess.role === 'admin') {
-      const sc = S.d.iscritti.filter(i => i.attivo !== false && statoCert(i).c === 'red');
-      const ys = S.d.iscritti.filter(i => i.attivo !== false && statoCert(i).c === 'yellow');
+      const sc = veri().filter(i => i.attivo !== false && statoCert(i).c === 'red');
+      const ys = veri().filter(i => i.attivo !== false && statoCert(i).c === 'yellow');
       if (!sc.length && !ys.length) return '';
       return `<button class="alert-b ${sc.length ? 'red' : 'yellow'}" data-gocert><span class="ab-t">${sc.length ? `<span>🔴 <b>${sc.length}</b> ${sc.length === 1 ? 'certificato scaduto o mancante' : 'certificati scaduti o mancanti'}</span>` : ''}${ys.length ? `<span>🟡 <b>${ys.length}</b> in scadenza</span>` : ''}</span><span class="ab-go">Vedi ›</span></button>`;
     }
-    const me = S.sess.iscritto; if (!me) return '';
-    const c = statoCert(me);
-    if (c.c === 'red') return `<div class="alert-b red static">🔴 <span><b>Certificato medico ${me.certificato_scadenza ? 'scaduto' : 'mancante'}.</b> ${me.certificato_scadenza ? 'È scaduto il ' + fmt(me.certificato_scadenza) + '. ' : ''}Consegna il nuovo certificato all'allenatore.</span></div>`;
-    if (c.c === 'yellow') return `<div class="alert-b yellow static">🟡 <span><b>Certificato in scadenza:</b> ${esc(c.t)}. Prenota la visita.</span></div>`;
-    return '';
+    return problemiIscritto(S.sess.iscritto).map(p => `<div class="alert-b ${p.c} static">${p.c === 'red' ? '🔴' : '🟡'} <span><b>${esc(p.t)}</b> ${esc(p.d)}</span></div>`).join('');
   }
+  function problemiIscritto(me) {
+    if (!me) return [];
+    const out = [], c = statoCert(me), s = statoIscr(me), arr = quoteArretrate(me);
+    if (c.c === 'red') out.push({ c: 'red', t: 'Certificato medico ' + (me.certificato_scadenza ? 'scaduto' : 'mancante') + '.', d: (me.certificato_scadenza ? 'È scaduto il ' + fmt(me.certificato_scadenza) + '. ' : '') + 'Consegna il nuovo certificato all\'allenatore.' });
+    else if (c.c === 'yellow') out.push({ c: 'yellow', t: 'Certificato in scadenza.', d: 'Scade il ' + fmt(me.certificato_scadenza) + ': prenota la visita.' });
+    if (s.c === 'red') out.push({ c: 'red', t: me.scadenza_iscrizione ? 'Iscrizione scaduta.' : 'Iscrizione da completare.', d: me.scadenza_iscrizione ? 'È scaduta il ' + fmt(me.scadenza_iscrizione) + ': rinnovala con l\'allenatore.' : 'Completa l\'iscrizione con l\'allenatore.' });
+    else if (s.c === 'yellow') out.push({ c: 'yellow', t: 'Iscrizione in scadenza.', d: 'Scade il ' + fmt(me.scadenza_iscrizione) + ': ricordati di rinnovarla.' });
+    if (arr.length) out.push({ c: 'red', t: arr.length === 1 ? 'Quota da pagare.' : arr.length + ' quote da pagare.', d: arr.map(nomeMese).join(', ') + (S.d.settings.quota_mensile ? ' · € ' + Number(S.d.settings.quota_mensile).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + ' al mese' : '') + '.' });
+    return out;
+  }
+  // promemoria a ogni apertura dell'app (iscritto)
+  let ultimoPromemoria = 0;
+  async function promemoriaApertura() {
+    if (S.sess.role !== 'iscritto' || !S.sess.iscritto) return;
+    const pr = problemiIscritto(S.sess.iscritto);
+    ultimoPromemoria = Date.now();
+    if (!pr.length) return;
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+        const body = pr.map(p => p.t + ' ' + p.d).join('\n'), opt = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'sct-promemoria', renotify: true };
+        if (reg && reg.showNotification) await reg.showNotification('Training Lab · Promemoria', opt); else new Notification('Training Lab · Promemoria', opt);
+      }
+    } catch (e) {}
+    modal('<h3>Promemoria</h3>' + pr.map(p => `<div class="alert-b ${p.c} static">${p.c === 'red' ? '🔴' : '🟡'} <span><b>${esc(p.t)}</b> ${esc(p.d)}</span></div>`).join('') +
+      ('Notification' in window && Notification.permission === 'default' ? '<button class="btn ghost wide" data-notif2>Ricevi i promemoria anche come notifica</button>' : '') +
+      '<div class="m-row"><button class="btn primary" data-close>Ho capito</button></div>', (w) => {
+        const nb = w.querySelector('[data-notif2]');
+        if (nb) nb.onclick = async () => { try { await Notification.requestPermission(); } catch (e) {} nb.remove(); };
+      });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && S.sess && S.d && Date.now() - ultimoPromemoria > 30 * 60 * 1000) promemoriaApertura();
+  });
 
   /* ------------------------------------------------------------------ eventi */
   function eventiDel(ds) { return (S.d.eventi || []).filter(e => e.data === ds); }
@@ -681,7 +753,7 @@
     const e = S.d.eventi.find(x => x.id === id); if (!e) return;
     const ids = (S.d.pe || []).filter(p => p.evento_id === id).map(p => p.iscritto_id);
     const lista = S.d.iscritti.filter(i => ids.includes(i.id)).sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
-    const altri = S.d.iscritti.filter(i => i.attivo !== false && !ids.includes(i.id)).sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
+    const altri = veri().filter(i => i.attivo !== false && !ids.includes(i.id)).sort((a, b) => (a.nome + a.cognome).localeCompare(b.nome + b.cognome));
     const w = document.createElement('div');
     w.className = 'sheet';
     document.body.appendChild(w); document.body.classList.add('noscroll');
@@ -722,12 +794,14 @@
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
       <h3 class="sec-t">Prossime lezioni</h3>
-      ${out.length ? out.map(x => lezioneCard(x[0], x[1])).join('') : '<p class="muted card pad">Nessuna lezione in programma.</p>'}`;
+      ${out.length ? out.map(x => lezioneCard(x[0], x[1])).join('') : '<p class="muted card pad">Nessuna lezione in programma.</p>'}
+      ${mesiCorsoHtml()}`;
   }
   function statoCards(i) {
     const admin = S.sess.role === 'admin';
-    const c = statoCert(i), s = statoIscr(i), q = admin ? statoQuota(i) : null;
-    return `<div class="stati${admin ? '' : ' due'}">
+    const c = statoCert(i), s = statoIscr(i), q = statoQuota(i);
+    void admin;
+    return `<div class="stati">
       <div class="st ${c.c}"><small>Certificato medico</small><b>${esc(c.t)}</b></div>
       <div class="st ${s.c}"><small>Iscrizione</small><b>${esc(s.t)}</b></div>
       ${q ? `<div class="st ${q.c}"><small>Quota mensile</small><b>${esc(q.t)}</b></div>` : ''}</div>`;
@@ -742,28 +816,51 @@
         <dt>Telefono</dt><dd>${esc(me.telefono || '—')}</dd>
         <dt>Email</dt><dd>${esc(me.email || '—')}</dd>
         <dt>Iscritto dal</dt><dd>${fmt(me.data_iscrizione)}</dd>
-        <dt>Certificato</dt><dd>${me.certificato_tipo === 'agonistico' ? 'Agonistico' : 'Non agonistico'} · scade ${fmt(me.certificato_scadenza)}</dd>
+        <dt>Iscrizione</dt><dd>${me.scadenza_iscrizione ? 'scade il ' + fmt(me.scadenza_iscrizione) : 'da completare'}</dd>
+        <dt>Certificato</dt><dd>${me.certificato_tipo === 'agonistico' ? 'Agonistico' : 'Non agonistico'}<br><b>scade il ${fmt(me.certificato_scadenza)}</b></dd>
       </dl>
-      <p class="hint">Per correggere i tuoi dati scrivi all'amministratore.</p>
       <button class="link" data-inf>Informativa privacy</button></section>
+      <form class="card pad" id="f-me">
+        <h3 class="sec-t">Modifica i tuoi dati</h3>
+        <div class="two"><label>Nome *<input class="inp" name="nome" maxlength="60" required value="${esc(me.nome)}"></label>
+        <label>Cognome<input class="inp" name="cognome" maxlength="60" value="${esc(me.cognome || '')}"></label></div>
+        <label>Data di nascita<input class="inp" type="date" name="data_nascita" max="${today()}" min="1920-01-01" value="${esc(me.data_nascita || '')}"></label>
+        <button class="btn primary big" type="submit">Salva</button>
+        <p class="hint">Gli altri dati (telefono, email, iscrizione, certificato, quote) li aggiorna l'allenatore.</p>
+      </form>
       ${statoCards(me)}
-      ${DB.mode === 'online' ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
+      ${quoteGrid(me)}
+      ${DB.mode === 'online' && !S.sess.anteprima ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
       <p class="ver">Versione ${esc(window.APP_VERSION)}</p>`;
+  }
+
+  function quoteGrid(me) {
+    const mesi = mesiStagione(), mc = meseCorrente(), da = (me.data_iscrizione || '').slice(0, 7);
+    if (!mesi.length) return '';
+    return `<section class="card pad"><h3 class="sec-t">Le tue quote mensili${S.d.settings.quota_mensile ? ' · € ' + esc(S.d.settings.quota_mensile) : ''}</h3>
+      <div class="mesi">${mesi.map(m => { const on = meseAttivo(m), pg = pagato(me.id, m), dov = on && m <= mc && (!da || m >= da);
+        return `<div class="mese${!on ? ' off' : pg ? ' paid' : dov ? ' due' : ''}${m === mc ? ' cur' : ''}"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>${!on ? '—' : pg ? '✓' : dov ? '✕' : '·'}</b></div>`; }).join('')}</div>
+      <p class="hint">✓ pagata · ✕ da pagare · — mese senza corso</p></section>`;
+  }
+  function mesiCorsoHtml() {
+    const mesi = mesiStagione(); if (!mesi.length) return '';
+    return `<section class="card pad"><h3 class="sec-t">Mesi del corso</h3><div class="mchips">${mesi.map(m => `<span class="mchip${meseAttivo(m) ? ' on' : ''}">${MESI[Number(m.slice(5)) - 1].slice(0, 3)}${meseAttivo(m) ? '' : ' · no'}</span>`).join('')}</div>
+      <p class="hint">In rosso i mesi con allenamenti, in grigio quelli senza corso.</p></section>`;
   }
 
   /* --------------------------------------------------------------- iscritti */
   function viewIscritti() {
-    const all = S.d.iscritti.slice().sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
+    const all = veri().sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
     const cnt = {
       cert: all.filter(i => i.attivo !== false && statoCert(i).c !== 'green').length,
       iscr: all.filter(i => i.attivo !== false && statoIscr(i).c !== 'green').length,
-      quota: all.filter(i => i.attivo !== false && statoQuota(i).c !== 'green').length
+      quota: all.filter(i => i.attivo !== false && statoQuota(i).c === 'red').length
     };
     const q = S.q.toLowerCase();
     let list = all.filter(i => !q || (nomeCompleto(i) + ' ' + (i.cognome + ' ' + i.nome) + ' ' + (i.telefono || '') + ' ' + (i.email || '')).toLowerCase().includes(q));
     if (S.filtro === 'cert') list = list.filter(i => i.attivo !== false && statoCert(i).c !== 'green');
     if (S.filtro === 'iscr') list = list.filter(i => i.attivo !== false && statoIscr(i).c !== 'green');
-    if (S.filtro === 'quota') list = list.filter(i => i.attivo !== false && statoQuota(i).c !== 'green');
+    if (S.filtro === 'quota') list = list.filter(i => i.attivo !== false && statoQuota(i).c === 'red');
     if (S.filtro === 'inattivi') list = list.filter(i => i.attivo === false);
     // "Tutti": attivi e disabilitati insieme; i disabilitati compaiono in trasparenza
     const f = (k, t, n) => `<button class="chip${S.filtro === k ? ' on' : ''}" data-filtro="${k}">${t}${n != null ? ' <b>' + n + '</b>' : ''}</button>`;
@@ -868,7 +965,7 @@
           </form>
 
           ${id ? `<h3 class="sec-t">Quote mensili${st.quota_mensile ? ' · € ' + esc(st.quota_mensile) : ''}</h3>
-          <div class="mesi">${mesi.map(m => `<button type="button" class="mese${pagato(id, m) ? ' paid' : (m <= mc ? ' due' : '')}${m === mc ? ' cur' : ''}" data-mese="${m}"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>${pagato(id, m) ? '✓' : (m <= mc ? '✕' : '·')}</b></button>`).join('')}</div>
+          <div class="mesi">${mesi.map(m => meseAttivo(m) ? `<button type="button" class="mese${pagato(id, m) ? ' paid' : (m <= mc ? ' due' : '')}${m === mc ? ' cur' : ''}" data-mese="${m}"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>${pagato(id, m) ? '✓' : (m <= mc ? '✕' : '·')}</b></button>` : `<div class="mese off${m === mc ? ' cur' : ''}" title="Mese senza corso"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>—</b></div>`).join('')}</div>
           <p class="hint">Tocca un mese per segnarlo pagato / non pagato.</p>
           <h3 class="sec-t">Assenze segnalate</h3>
           ${ass.length ? '<ul class="alist">' + ass.slice(0, 30).map(a => { const s = st.slots.find(x => x.id === a.slot); return `<li><b>${fmt(a.data)}</b> ${esc(s ? s.nome : '')}${a.nota ? ' · ' + esc(a.nota) : ''}</li>`; }).join('') + '</ul>' : '<p class="muted">Nessuna assenza.</p>'}` : ''}
@@ -939,10 +1036,18 @@
         <div class="two"><label>Inizio<input class="inp" type="date" id="i-sin" value="${esc(s.stagione_inizio || '')}"></label>
         <label>Fine<input class="inp" type="date" id="i-sfi" value="${esc(s.stagione_fine || '')}"></label></div>
         <p class="hint">Le lezioni compaiono nel calendario solo in questo periodo. Le singole date (festività…) si annullano dal calendario.</p>
+        <h3 class="sec-t">Mesi del corso</h3>
+        <div class="mesi">${mesiStagione().map(m => `<button type="button" class="mese tog${meseAttivo(m) ? ' paid' : ' off'}" data-mtog="${m}"><small>${MESI[Number(m.slice(5)) - 1].slice(0, 3)}</small><b>${meseAttivo(m) ? '✓' : '—'}</b></button>`).join('')}</div>
+        <p class="hint">Tocca un mese per attivarlo (✓) o disattivarlo (—). Nei mesi disattivati non ci sono lezioni e la quota non è dovuta. Gli iscritti vedono quali mesi sono attivi. Ricordati di salvare.</p>
         <h3 class="sec-t">Quote e avvisi</h3>
         <div class="two"><label>Quota mensile (€)<input class="inp" type="number" min="0" step="0.5" id="i-quota" value="${esc(s.quota_mensile || 0)}"></label>
         <label>Giallo da (giorni prima)<input class="inp" type="number" min="1" max="120" id="i-pre" value="${esc(s.preavviso_giorni || 30)}"></label></div>
         <button class="btn primary big" id="b-saveimp">Salva impostazioni</button>
+      </section>
+      <section class="card pad">
+        <h3 class="sec-t">Controlla l'app come iscritto</h3>
+        <p class="muted small">Usa l'account di prova per vedere e provare l'app esattamente come la vede un iscritto. Non compare negli elenchi né nelle presenze.</p>
+        <button class="btn ghost wide" id="b-ante">👁 Passa all'account di prova iscritto</button>
       </section>
       <section class="card pad">
         <h3 class="sec-t">Dati</h3>
@@ -972,7 +1077,7 @@
   function csv() {
     const st = S.d.settings;
     const rows = [['Cognome', 'Nome', 'Telefono', 'Email', 'Lezioni', 'Data iscrizione', 'Scadenza iscrizione', 'Tipo certificato', 'Scadenza certificato', 'Quota ' + nomeMese(meseCorrente()), 'Attivo']];
-    S.d.iscritti.forEach(i => rows.push([i.cognome, i.nome, i.telefono, i.email, lezioniTesto(i), fmt(i.data_iscrizione), fmt(i.scadenza_iscrizione),
+    veri().forEach(i => rows.push([i.cognome, i.nome, i.telefono, i.email, lezioniTesto(i), fmt(i.data_iscrizione), fmt(i.scadenza_iscrizione),
       i.certificato_tipo === 'agonistico' ? 'Agonistico' : 'Non agonistico', fmt(i.certificato_scadenza), pagato(i.id, meseCorrente()) ? 'Pagata' : 'Da pagare', i.attivo !== false ? 'Sì' : 'No']));
     const txt = '﻿' + rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(';')).join('\r\n');
     const a = document.createElement('a');
@@ -1063,6 +1168,7 @@
         slots: leggiSlots(), luogo: $('#i-luogo').value.trim(), stagione_inizio: $('#i-sin').value, stagione_fine: $('#i-sfi').value,
         quota_mensile: Number($('#i-quota').value) || 0, preavviso_giorni: Math.max(1, Number($('#i-pre').value) || 30)
       });
+      s.mesi_off = (S.d.settings.mesi_off || []).slice();
       if (s.stagione_inizio && s.stagione_fine && s.stagione_fine < s.stagione_inizio) return toast('La fine stagione è prima dell\'inizio', 'err');
       if (s.slots.some(x => x.fine <= x.inizio)) return toast('Controlla gli orari: la fine deve essere dopo l\'inizio', 'err');
       await run(() => DB.saveSettings(s), 'Impostazioni salvate').catch(() => {}); await ricarica();
@@ -1071,13 +1177,29 @@
     const ex = $('#b-example'); if (ex) ex.onclick = async () => { DB.loadExample(); S.view = 'iscritti'; await carica(); refreshDemoList(); toast('Iscritti di esempio caricati'); };
     const rs = $('#b-reset'); if (rs) rs.onclick = async () => { if (await confirmBox('Azzerare la prova?', 'Tutti i dati di prova su questo dispositivo verranno cancellati.', 'Azzera')) { DB.reset(); location.reload(); } };
     const cp = $('#b-pw'); if (cp) cp.onclick = () => nuovaPassword();
+    const ba = $('#b-ante'); if (ba) ba.onclick = entraAnteprima;
+    main.querySelectorAll('[data-mtog]').forEach(b => b.onclick = () => {
+      const m = b.dataset.mtog, off = (S.d.settings.mesi_off || []).slice();
+      S.d.settings.mesi_off = off.includes(m) ? off.filter(x => x !== m) : off.concat(m);
+      const on = meseAttivo(m); b.classList.toggle('paid', on); b.classList.toggle('off', !on); b.querySelector('b').textContent = on ? '✓' : '—';
+    });
+    const fm = $('#f-me');
+    if (fm) fm.onsubmit = async e => {
+      e.preventDefault();
+      const nome = fm.nome.value.trim(), cognome = fm.cognome.value.trim(), dn = fm.data_nascita.value;
+      if (!nome) return toast('Il nome è obbligatorio', 'err');
+      if (dn && (dn > today() || dn < '1920-01-01')) return toast('Data di nascita non valida', 'err');
+      const me = S.sess.iscritto;
+      const ok = await run(() => S.sess.anteprima ? DB.saveIscritto(Object.assign({}, me, { nome, cognome, data_nascita: dn || null })) : DB.aggiornaMieiDati(nome, cognome, dn), 'Dati aggiornati').then(() => true).catch(() => false);
+      if (ok) await ricarica();
+    };
     const lo = $('#b-logout'); if (lo) lo.onclick = async () => { await DB.signOut(); S.view = null; carica(); };
   }
 
   async function refreshDemoList() {
     if (DB.mode !== 'demo') return;
     const v = DB.getVista(); DB.setVista('admin');
-    const all = await DB.loadAll(); DB._all = all.iscritti.slice().sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
+    const all = await DB.loadAll(); DB._all = all.iscritti.filter(i => !i.prova).sort((a, b) => (a.cognome + a.nome).localeCompare(b.cognome + b.nome));
     DB.setVista(v); render();
   }
   if (DB.mode === 'demo') {
