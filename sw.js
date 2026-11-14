@@ -2,7 +2,7 @@
    L'app resta sulla versione installata (funziona anche offline) finché
    non premi "Aggiorna": il tasto compare quando version.json annuncia
    una versione nuova. Non serve cambiare questo file a ogni rilascio. */
-const CACHE = 'sct-traininglab-app-2';
+const CACHE = 'sct-traininglab-app-3';
 // Sblocco una tantum (1.8.3): i telefoni fermi a una versione vecchia, dove il tasto
 // "Aggiorna" spariva, ricevono questo service worker nuovo, che svuota la copia vecchia
 // e ricarica l'app aggiornata. Dopo questo passaggio torna a valere la regola normale:
@@ -26,8 +26,11 @@ self.addEventListener('activate', e => {
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
+      // ricarica solo le finestre in secondo piano: ricaricare la pagina che si sta usando
+      // (per esempio mentre si scrive email e password) su iPhone può lasciare le caselle
+      // non più selezionabili. La pagina aperta si aggiorna al prossimo avvio o con "Aggiorna".
       .then(() => self.clients.matchAll({ type: 'window' }))
-      .then(list => Promise.all(list.map(c => { try { return c.navigate(c.url); } catch (err) { return null; } })))
+      .then(list => Promise.all(list.filter(c => c.visibilityState === 'hidden').map(c => { try { return c.navigate(c.url); } catch (err) { return null; } })))
       .catch(() => {})
   );
 });

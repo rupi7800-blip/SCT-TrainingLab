@@ -57,7 +57,7 @@ main { padding: 12px 14px 20px; }
 .fab .ic { width: 28px; height: 28px; stroke-width: 2.6; }
 
 /* campi */
-.inp { width: 100%; border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 12px; font: inherit; background: #fff; color: var(--ink); outline: none; }
+.inp { width: 100%; border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 12px; font: inherit; font-size: 16px; background: #fff; color: var(--ink); outline: none; }
 .inp:focus { border-color: var(--red); }
 label { display: block; font-size: 13px; font-weight: 600; color: var(--ink2); margin-top: 10px; }
 label .inp { margin-top: 5px; }
@@ -194,7 +194,7 @@ label .inp { margin-top: 5px; }
 
 /* impostazioni */
 .slotrow { display: grid; grid-template-columns: 1.1fr 1.3fr 1fr 1fr auto; gap: 6px; margin-bottom: 8px; align-items: center; }
-.slotrow .inp { padding: 9px 8px; font-size: 14px; }
+.slotrow .inp { padding: 9px 8px; font-size: 16px; }
 @media (max-width: 480px) {
   .slotrow { grid-template-columns: 1fr 1fr auto; }
   .slotrow [data-f="nome"] { grid-column: 1; }

@@ -1,1 +1,1 @@
-{ "version": "1.8.3", "date": "2026-11-11", "notes": ["Sblocco automatico dei telefoni fermi a una versione vecchia", "Tasto Aggiorna sempre visibile", "Eventi: nomi dei partecipanti nel riquadro dell'evento"] }
+{ "version": "1.8.4", "date": "2026-11-14", "notes": ["iPhone: corretto il blocco delle caselle di accesso e dell'app dopo il ritorno dallo sfondo", "iPhone: niente più zoom automatico quando si tocca una casella", "L'aggiornamento non ricarica più la pagina mentre la stai usando"] }

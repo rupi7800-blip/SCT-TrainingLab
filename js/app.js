@@ -173,9 +173,17 @@
   /* ------------------------------------------------------------------ avvio */
   async function boot() {
     try { await DB.init(); } catch (e) { app.innerHTML = '<div class="center-msg"><h2>Connessione non riuscita</h2><p>' + esc(e.message) + '</p><button class="btn primary" onclick="location.reload()">Riprova</button></div>'; return; }
-    if (DB.onAuth) DB.onAuth(async (ev) => {
-      if (ev === 'PASSWORD_RECOVERY') return nuovaPassword();
-      if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') { if (!S._loading) await carica(); }
+    // Il callback di Supabase gira mentre la libreria tiene il suo "lucchetto" interno:
+    // se qui dentro si aspetta un'altra chiamata a Supabase (carica → getSession) tutto
+    // si blocca (login, salvataggi, caricamenti). Per questo il lavoro va rimandato
+    // con setTimeout, come raccomanda la documentazione di Supabase.
+    if (DB.onAuth) DB.onAuth((ev) => {
+      setTimeout(() => {
+        if (ev === 'PASSWORD_RECOVERY') return nuovaPassword();
+        // già sulla schermata di accesso: non ridisegnarla, si perderebbe quello che si sta scrivendo
+        if (ev === 'SIGNED_OUT' && S.sess && S.sess.role === 'anon') return;
+        if ((ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') && !S._loading) carica();
+      }, 0);
     });
     await carica();
   }
