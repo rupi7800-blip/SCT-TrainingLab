@@ -2,13 +2,13 @@
    L'app resta sulla versione installata (funziona anche offline) finché
    non premi "Aggiorna": il tasto compare quando version.json annuncia
    una versione nuova. Non serve cambiare questo file a ogni rilascio. */
-const CACHE = 'sct-traininglab-app-3';
+const CACHE = 'sct-traininglab-app-4';
 // Sblocco una tantum (1.8.3): i telefoni fermi a una versione vecchia, dove il tasto
 // "Aggiorna" spariva, ricevono questo service worker nuovo, che svuota la copia vecchia
 // e ricarica l'app aggiornata. Dopo questo passaggio torna a valere la regola normale:
 // l'app resta sulla versione installata finché non si preme "Aggiorna".
 const ASSETS = [
-  './', './index.html', './css/style.css', './js/config.js', './js/privacy.js', './js/data.js', './js/app.js', './js/aggiornamenti.js', './js/vendor/supabase.js',
+  './', './index.html', './css/style.css', './js/config.js', './js/privacy.js', './js/data.js', './js/allenamenti.js', './js/app.js', './js/aggiornamenti.js', './js/vendor/supabase.js',
   './manifest.webmanifest', './icons/logo.png', './icons/icon-32.png', './icons/icon-180.png', './icons/icon-192.png',
   './icons/icon-512.png', './icons/maskable-512.png'
 ];

@@ -75,6 +75,7 @@
     });
   }
   function toast(msg, tipo) {
+    document.querySelectorAll('.toast').forEach(x => x.remove());
     const t = document.createElement('div');
     t.className = 'toast' + (tipo ? ' ' + tipo : ''); t.textContent = msg;
     document.body.appendChild(t);
@@ -91,7 +92,9 @@
       w.className = 'modal-bg';
       w.innerHTML = '<div class="modal" role="dialog">' + html + '</div>';
       document.body.appendChild(w);
-      const close = v => { w.remove(); resolve(v); };
+      const close = v => { w.remove(); document.removeEventListener('keydown', esc_); resolve(v); };
+      const esc_ = e => { if (e.key === 'Escape' && w === Array.from(document.querySelectorAll('.modal-bg')).pop()) close(null); };
+      document.addEventListener('keydown', esc_);
       w.addEventListener('click', e => { if (e.target === w) close(null); });
       w.querySelectorAll('[data-close]').forEach(b => b.onclick = () => close(null));
       onMount && onMount(w, close);
@@ -145,6 +148,12 @@
     return { c: 'green', t: nomeMese(m) + ' pagata' };
   }
 
+  // modulo Allenamento del giorno (js/allenamenti.js)
+  const ALL = window.Allenamenti({
+    S, esc, ic: (n, c) => ic(n, c), toast, run, modal, confirmBox, today, parse, fmt, fmtLong, addDays, MESI, GIORNI,
+    slotsDel: ds => slotsDel(ds), ricarica: () => ricarica()
+  });
+
   /* --------------------------------------------------------------- lezioni */
   function inStagione(ds) {
     const s = S.d.settings;
@@ -195,20 +204,40 @@
       if (S.sess.role === 'privacy') return renderPrivacyGate();
       if (S.sess.role === 'non_abilitato') return renderNonAbilitato();
       S.d = await DB.loadAll();
+      S.offline = false; S.agg = Date.now();
+      salvaCopia();
       if (!S.view) S.view = S.sess.role === 'admin' ? 'cal' : 'lezioni';
       render();
       notificaNuovi();
       promemoriaApertura();
     } catch (e) {
+      const c = leggiCopia();
+      if (c && c.sess && c.d && /connessione|fetch|network|load failed/i.test(e.message || '')) {
+        S.sess = c.sess; S.d = c.d; S.offline = c.t;
+        if (!S.view) S.view = S.sess.role === 'admin' ? 'cal' : 'lezioni';
+        render(); return;
+      }
       app.innerHTML = '<div class="center-msg"><h2>Errore</h2><p>' + esc(e.message) + '</p><button class="btn primary" onclick="location.reload()">Riprova</button></div>';
     } finally { S._loading = false; }
   }
   async function ricarica() {
-    S.d = await DB.loadAll();
-    if (S.sess.anteprima) { const p = S.d.iscritti.find(i => i.id === S.sess.iscritto.id); if (p) S.sess.iscritto = p; }
-    else if (S.sess.role === 'iscritto') S.sess = await DB.session();
+    try {
+      S.d = await DB.loadAll();
+      salvaCopia();
+      if (S.sess.anteprima) { const p = S.d.iscritti.find(i => i.id === S.sess.iscritto.id); if (p) S.sess.iscritto = p; }
+      else if (S.sess.role === 'iscritto') S.sess = await DB.session();
+      S.offline = false; S.agg = Date.now();
+    } catch (e) { toast(e.message || 'Aggiornamento non riuscito', 'err'); }
     render();
   }
+  // copia locale degli ultimi dati: l'app si apre in sola lettura anche senza connessione
+  const COPIA = 'sct-copia-dati';
+  function salvaCopia() {
+    if (DB.mode !== 'online' || !S.sess || S.sess.anteprima) return;
+    try { localStorage.setItem(COPIA, JSON.stringify({ email: S.sess.email, sess: S.sess, d: S.d, t: Date.now() })); } catch (e) { /* memoria piena: pazienza */ }
+  }
+  function leggiCopia() { try { return JSON.parse(localStorage.getItem(COPIA)); } catch (e) { return null; } }
+  function cancellaCopia() { try { localStorage.removeItem(COPIA); } catch (e) {} }
   async function entraAnteprima() {
     let p = S.d.iscritti.find(i => i.prova);
     if (!p) {
@@ -361,7 +390,7 @@
       <h2>Account non ancora abilitato</h2>
       <p>Registrazione ricevuta! L'email <b>${esc(S.sess.email)}</b> non è ancora collegata a una scheda del Training Lab.<br>L'amministratore ha ricevuto un avviso e ti abiliterà a breve: poi tocca "Riprova".</p>
       <div class="m-row"><button class="btn ghost" id="b-out">Esci</button><button class="btn primary" id="b-retry">Riprova</button></div></div>`;
-    $('#b-out').onclick = async () => { await DB.signOut(); carica(); };
+    $('#b-out').onclick = async () => { cancellaCopia(); await DB.signOut(); carica(); };
     $('#b-retry').onclick = carica;
   }
 
@@ -382,7 +411,11 @@
     note: '<path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
     back: '<path d="M15 18l-6-6 6-6"/>', plus: '<path d="M12 5v14M5 12h14"/>', out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
-    trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', l: '<path d="M15 18l-6-6 6-6"/>', r: '<path d="M9 18l6-6-6-6"/>'
+    trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+    wk: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>',
+    clip: '<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/>',
+    paste: '<path d="M9 4h6v3H9z"/><path d="M15 5h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3"/><path d="M9 12h6M9 16h4"/>',
+    link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4L12 18.4"/>', l: '<path d="M15 18l-6-6 6-6"/>', r: '<path d="M9 18l6-6-6-6"/>'
   };
   const ic = (n, c) => '<svg class="ic ' + (c || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[n] + '</svg>';
   const WA = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="fill:currentColor;stroke:none"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2s.2-1.1.2-1.2-.2-.2-.5-.3z"/></svg>';
@@ -390,8 +423,8 @@
   function render() {
     const admin = S.sess.role === 'admin';
     const tabs = admin
-      ? [['cal', 'Calendario', 'cal'], ['eventi', 'Eventi', 'ev'], ['iscritti', 'Iscritti', 'isc'], ['imp', 'Impostazioni', 'imp']]
-      : [['lezioni', 'Lezioni', 'les'], ['eventi', 'Eventi', 'ev'], ['cal', 'Calendario', 'cal'], ['me', 'Profilo', 'me']];
+      ? [['cal', 'Calendario', 'cal'], ['all', 'Allenamenti', 'wk'], ['eventi', 'Eventi', 'ev'], ['iscritti', 'Iscritti', 'isc'], ['imp', 'Impostazioni', 'imp']]
+      : [['lezioni', 'Lezioni', 'les'], ['all', 'Allenamenti', 'wk'], ['eventi', 'Eventi', 'ev'], ['cal', 'Calendario', 'cal'], ['me', 'Profilo', 'me']];
     const demo = DB.mode === 'demo' ? demoBar() : '';
     let body = '';
     if (S.view === 'cal') body = viewCal();
@@ -400,8 +433,10 @@
     else if (S.view === 'lezioni') body = viewLezioni();
     else if (S.view === 'me') body = viewMe();
     else if (S.view === 'eventi') body = viewEventi();
+    else if (S.view === 'all') body = ALL.view();
     const ante = S.sess.anteprima ? `<div class="ante">👁 Anteprima come iscritto (account di prova)<button class="btn sm" id="b-esci-ante">Torna amministratore</button></div>` : '';
-    app.innerHTML = demo + ante + `
+    const offl = S.offline ? `<div class="offl">📡 Sei offline · dati del ${esc(new Date(S.offline).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}<button class="btn sm" id="b-retry-on">Riprova</button></div>` : '';
+    app.innerHTML = demo + ante + offl + `
       <header class="top">
         <img src="icons/logo.png" alt="" class="top-logo">
         <div class="top-t"><b>Training Lab</b><small>${admin ? 'Amministratore' : esc(nomeCompleto(S.sess.iscritto || { nome: '' }))}</small></div>
@@ -412,9 +447,11 @@
       <nav class="tabs">${tabs.map(t => `<button class="tab${S.view === t[0] ? ' on' : ''}" data-tab="${t[0]}">${ic(t[2])}<span>${t[1]}</span></button>`).join('')}</nav>`;
     const bav = $('#b-avvisi'); if (bav) bav.onclick = openAvvisi;
     const bea = $('#b-esci-ante'); if (bea) bea.onclick = esciAnteprima;
+    const bro = $('#b-retry-on'); if (bro) bro.onclick = () => carica();
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.view = b.dataset.tab; render(); window.scrollTo(0, 0); });
     if (DB.mode === 'demo') bindDemo();
     bind();
+    ALL.bind($('#main'));
     piazzaAggiorna();
   }
   // Il tasto "Aggiorna" viene creato una sola volta da aggiornamenti.js: teniamo il riferimento
@@ -467,7 +504,7 @@
         const tutteAnn = sl.every(s => annullata(ds, s.id));
         cls.push(tutteAnn ? 'ann' : 'les');
         if (!tutteAnn) {
-          const nAss = admin ? S.d.assenze.filter(a => a.data === ds && sl.some(s => s.id === a.slot) && !annullata(ds, a.slot)).length
+          const nAss = admin ? sl.filter(s => !annullata(ds, s.id)).reduce((t, s) => t + partecipanti(ds, s.id).filter(i => assenza(i.id, ds, s.id)).length, 0)
             : sl.filter(s => assenza(me.id, ds, s.id)).length;
           if (nAss) badge = admin ? `<i class="badge">${nAss}</i>` : '<i class="badge">A</i>';
         }
@@ -477,7 +514,8 @@
       if (nEv) cls.push(sl.length ? 'hasev' : 'evday');
       if (ds === today()) cls.push('today');
       if (ds === S.day) cls.push('sel');
-      cells += `<button class="${cls.join(' ')}" data-day="${ds}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}</button>`;
+      const wk = ALL.haAllenamento(ds) ? '<i class="wkdot" aria-hidden="true"></i>' : '';
+      cells += `<button class="${cls.join(' ')}" data-day="${ds}" aria-label="${esc(fmtLong(ds))}"><span>${g}</span>${badge}${nEv ? '<i class="evdot"></i>' : ''}${wk}</button>`;
     }
     const oggiB = admin ? compleanniHtml(compleanniDel(today()).map(i => ({ i, ds: today(), k: 0 })), 'Compleanni di oggi') : '';
     const qm = admin ? quoteMeseMancanti() : [];
@@ -487,14 +525,16 @@
         <div class="cal-h">
           <button class="icbtn" data-mon="-1" aria-label="Mese precedente">${ic('l')}</button>
           <h2>${MESI[mo]} ${y}</h2>
+          ${y === new Date().getFullYear() && mo === new Date().getMonth() && S.day === today() ? '' : '<button class="btn sm ghost cal-oggi" data-oggi>Oggi</button>'}
           <button class="icbtn" data-mon="1" aria-label="Mese successivo">${ic('r')}</button>
         </div>
         ${inStagione(ymd(m)) || inStagione(y + '-' + pad(mo + 1) + '-' + pad(new Date(y, mo + 1, 0).getDate())) ? (meseAttivo(y + '-' + pad(mo + 1)) ? '' : '<p class="m-off">Mese senza corso: nessun allenamento</p>') : ''}
         <div class="grid wd">${GG.map(x => '<div>' + x + '</div>').join('')}</div>
         <div class="grid">${cells}</div>
-        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span>${admin ? '<span>🎂 Compleanno</span>' : ''}<span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
+        <div class="legend"><span><i class="lg les"></i>Lezione</span><span><i class="lg ann"></i>Annullata</span><span><i class="lg ev"></i>Evento</span><span><i class="lg wk"></i>Allenamento</span>${admin ? '<span>🎂 Compleanno</span>' : ''}<span><i class="badge s">${admin ? 'n' : 'A'}</i>${admin ? 'Assenti' : 'Tua assenza'}</span></div>
       </section>
       ${admin ? giornoAdmin(S.day) : giornoIscritto(S.day)}
+      ${ALL.giornoHtml(S.day)}
       ${eventiGiorno(S.day)}
       ${admin ? compleanniHtml(compleanniDel(S.day).map(i => ({ i, ds: S.day, k: Math.round((parse(S.day) - parse(today())) / 86400000) })), 'Compleanni del giorno') : ''}`;
   }
@@ -546,7 +586,7 @@
     }
     return `<div class="card les-card${ann ? ' is-ann' : ''}" data-pres="${ds}|${s.id}" role="button" tabindex="0">
       <div class="lc-date"><b>${parse(ds).getDate()}</b><small>${MESI[parse(ds).getMonth()].slice(0, 3)}</small></div>
-      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b>${stato}<small class="lc-more">👥 Vedi chi c'è ›</small></div>
+      <div class="lc-body"><b>${esc(GIORNI[parse(ds).getDay()])} · <span class="nw">${esc(s.inizio)}–${esc(s.fine)}</span></b><span class="lc-tags">${stato}${!ann && ALL.haAllenamento(ds, s.id) ? '<span class="tag wk">🏋️ Allenamento</span>' : ''}</span><small class="lc-more">👥 Vedi chi c'è ›</small></div>
       ${btn}</div>`;
   }
   function dot(st, l) { return `<i class="dot ${st.c}" title="${esc(st.t)}">${l}</i>`; }
@@ -884,8 +924,10 @@
       ds = addDays(ds, 1);
     }
     const bd = compleannoIl(me.data_nascita, today());
-    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}${bannerCertificati()}${installHtml()}<section class="hello"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
-      <p class="muted">Risulti sempre presente: se non puoi venire, segnala l'assenza.</p></section>
+    return `${bd ? `<section class="card pad bday big"><h2>🎂 Buon compleanno, ${esc((me.soprannome || '').trim() || me.nome)}!</h2><p>Tanti auguri da tutto il Training Lab dello Sci Club Taino!</p></section>` : ''}${bannerCertificati()}${installHtml()}<section class="hero"><h2>Ciao ${esc((me.soprannome || '').trim() || me.nome)}!</h2>
+      <p>${out.length ? 'Prossima lezione: <b>' + esc(out[0][0] === today() ? 'oggi' : fmtLong(out[0][0])) + '</b> alle ' + esc(out[0][1].inizio) : 'Nessuna lezione in programma.'}</p>
+      <small>Risulti sempre presente: se non puoi venire, segnala l'assenza.</small></section>
+      ${ALL.oggiHtml(today())}
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
       <h3 class="sec-t">Prossime lezioni</h3>
@@ -1118,7 +1160,7 @@
       });
       const del = w.querySelector('[data-del]');
       if (del) del.onclick = async () => {
-        if (!await confirmBox('Eliminare ' + nomeCompleto(i) + '?', 'Verranno cancellati anche quote e assenze. Per tenerlo in archivio togli invece la spunta "Iscritto attivo".', 'Elimina')) return;
+        if (!await confirmBox('Eliminare ' + nomeCompleto(i) + '?', 'Verranno cancellati anche quote e assenze. Per tenerlo in archivio disabilita invece la frequenza.', 'Elimina')) return;
         await run(() => DB.deleteIscritto(id), 'Iscritto eliminato').catch(() => {});
         close(); await ricarica();
       };
@@ -1202,6 +1244,7 @@
   /* ---------------------------------------------------------------- eventi */
   function bind() {
     const main = $('#main');
+    main.querySelectorAll('[data-oggi]').forEach(b => b.onclick = () => { S.month = firstOfMonth(new Date()); S.day = today(); render(); });
     main.querySelectorAll('[data-mon]').forEach(b => b.onclick = () => {
       S.month = new Date(S.month.getFullYear(), S.month.getMonth() + Number(b.dataset.mon), 1); render();
     });
@@ -1309,7 +1352,7 @@
       const ok = await run(() => S.sess.anteprima ? DB.saveIscritto(Object.assign({}, me, { nome, cognome, data_nascita: dn || null })) : DB.aggiornaMieiDati(nome, cognome, dn), 'Dati aggiornati').then(() => true).catch(() => false);
       if (ok) await ricarica();
     };
-    const lo = $('#b-logout'); if (lo) lo.onclick = async () => { await DB.signOut(); S.view = null; carica(); };
+    const lo = $('#b-logout'); if (lo) lo.onclick = async () => { cancellaCopia(); await DB.signOut(); S.view = null; carica(); };
   }
 
   async function refreshDemoList() {
@@ -1325,6 +1368,40 @@
   }
 
   document.addEventListener('app-update-available', () => { tastoAggiorna = null; piazzaAggiorna(); });
+
+  /* ------- tasto Indietro (Android) e Esc: chiudono la finestra aperta invece di uscire dall'app */
+  const strati = () => Array.from(document.querySelectorAll('.sheet, .modal-bg'));
+  let aperti = 0, ignoraPop = 0;
+  function chiudiStrato(w) {
+    if (!w) return;
+    if (w.classList.contains('modal-bg')) { w.dispatchEvent(new MouseEvent('click', { bubbles: true })); return; }
+    const x = w.querySelector('[data-x]');
+    if (x) x.click(); else { w.remove(); document.body.classList.remove('noscroll'); }
+  }
+  new MutationObserver(() => {
+    const n = strati().length;
+    if (n > aperti) { for (let k = aperti; k < n; k++) history.pushState({ sct: k + 1 }, ''); aperti = n; }
+    else if (n < aperti) { const diff = aperti - n; aperti = n; ignoraPop++; history.go(-diff); }
+    if (!n) document.body.classList.remove('noscroll');
+  }).observe(document.body, { childList: true });
+  window.addEventListener('popstate', () => {
+    if (ignoraPop > 0) { ignoraPop--; return; }
+    const l = strati(); if (!l.length) return;
+    aperti = l.length - 1;   // la voce di cronologia è già stata consumata dal tasto Indietro
+    chiudiStrato(l[l.length - 1]);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || document.querySelector('.modal-bg')) return;
+    const l = document.querySelectorAll('.sheet'); if (l.length) chiudiStrato(l[l.length - 1]);
+  });
+
+  /* ------- dati sempre freschi: ricarica quando si torna nell'app dopo qualche minuto */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !S.sess || !S.d || S._loading) return;
+    if (strati().length || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (Date.now() - (S.agg || 0) > 5 * 60 * 1000) { S.agg = Date.now(); if (S.offline) carica(); else ricarica(); }
+  });
+  window.addEventListener('online', () => { if (S.offline) carica(); });
 
   boot().then(() => refreshDemoList());
 
