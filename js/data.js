@@ -35,7 +35,7 @@
     let mem = null;
     try { mem = JSON.parse(localStorage.getItem(KEY)); } catch (e) { mem = null; }
     if (!mem) mem = { settings: defaultSettings(), iscritti: [], pagamenti: [], assenze: [], annullamenti: [], vista: 'admin' };
-    mem.eventi = mem.eventi || []; mem.pe = mem.pe || [];
+    mem.eventi = mem.eventi || []; mem.pe = mem.pe || []; mem.allenamenti = mem.allenamenti || [];
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) { /* solo in memoria */ } };
     const uid = () => 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const ok = v => Promise.resolve(JSON.parse(JSON.stringify(v)));
@@ -80,7 +80,8 @@
           conteggi: mem.pe.reduce((m, p) => { m[p.evento_id] = (m[p.evento_id] || 0) + 1; return m; }, {}),
           avvisi: demoAvvisi(),
           nomiEventi: mem.pe.reduce((m, p) => { const i = mem.iscritti.find(x => x.id === p.iscritto_id); if (i && !i.prova) (m[p.evento_id] = m[p.evento_id] || []).push({ nome: i.nome, iniziale: (i.cognome || '').slice(0, 1).toUpperCase(), soprannome: i.soprannome || null }); return m; }, {}),
-          note: mem.iscritti.reduce((m, i) => { if (mem.vista === 'admin') m[i.id] = i.note || ''; return m; }, {})
+          note: mem.iscritti.reduce((m, i) => { if (mem.vista === 'admin') m[i.id] = i.note || ''; return m; }, {}),
+          allenamenti: mem.allenamenti.filter(a => mem.vista === 'admin' || a.visibile !== false)
         });
       },
       async saveSettings(s) { mem.settings = s; save(); return ok(s); },
@@ -89,10 +90,7 @@
         else { const i = mem.iscritti.findIndex(x => x.id === o.id); if (i >= 0) mem.iscritti[i] = Object.assign(mem.iscritti[i], o); }
         save(); return ok(o);
       },
-      async accettaPrivacy(uid, email) {
-        const P = window.PRIVACY || { VERSIONE: '1.0' };
-        chk(await sb.from('consensi_privacy').insert({ user_id: uid, email, versione: P.VERSIONE }));
-      },
+      async accettaPrivacy() { /* modalità prova: nessun consenso da registrare */ },
       async aggiornaMieiDati(nome, cognome, data_nascita) {
         const i = mem.iscritti.find(x => x.id === mem.vista); if (!i) throw new Error('Scheda non trovata');
         Object.assign(i, { nome, cognome, data_nascita }); save();
@@ -129,6 +127,24 @@
         else { const i = mem.eventi.findIndex(x => x.id === o.id); if (i >= 0) mem.eventi[i] = o; }
         save(); return ok(o);
       },
+      async saveAllenamento(o) {
+        o = Object.assign({}, o, { aggiornato: new Date().toISOString() });
+        if (!o.id) { o.id = uid(); o.creato = o.aggiornato; mem.allenamenti.push(o); }
+        else { const i = mem.allenamenti.findIndex(x => x.id === o.id); if (i >= 0) mem.allenamenti[i] = o; else mem.allenamenti.push(o); }
+        const prima = JSON.stringify(mem);
+        save();
+        try { if (localStorage.getItem(KEY) !== prima) throw new Error('x'); }
+        catch (e) { mem.allenamenti = mem.allenamenti.filter(x => x.id !== o.id); throw new Error('Memoria del dispositivo piena: in modalità prova usa file più piccoli'); }
+        return ok(o);
+      },
+      async deleteAllenamento(a) { mem.allenamenti = mem.allenamenti.filter(x => x.id !== a.id); save(); },
+      async uploadFile(file) {
+        if (file.size > 3 * 1024 * 1024) throw new Error('In modalità prova i file possono pesare al massimo 3 MB');
+        const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('File non leggibile')); r.readAsDataURL(file); });
+        return { path: 'demo/' + uid(), nome: file.name, tipo: file.type || '', size: file.size, dataUrl };
+      },
+      async removeFiles() {},
+      async fileUrl(a) { return a.dataUrl || a.url || ''; },
       async deleteEvento(id) { mem.eventi = mem.eventi.filter(x => x.id !== id); mem.pe = mem.pe.filter(x => x.evento_id !== id); save(); },
       async partecipa(evento_id, iscritto_id, si) {
         mem.pe = mem.pe.filter(x => !(x.evento_id === evento_id && x.iscritto_id === iscritto_id));
@@ -194,7 +210,9 @@
           [/failed to fetch|network/i, 'Connessione assente: riprova quando sei online'],
           [/rate limit|too many/i, 'Troppi tentativi: riprova tra qualche minuto'],
           [/password should be at least/i, 'La password deve avere almeno 6 caratteri'],
-          [/should be different from the old/i, 'La nuova password deve essere diversa dalla precedente']
+          [/should be different from the old/i, 'La nuova password deve essere diversa dalla precedente'],
+          [/exceeded the maximum allowed size|payload too large|entity too large/i, 'File troppo grande (massimo 25 MB)'],
+          [/bucket not found|relation .*allenamenti.* does not exist|could not find the table/i, 'Funzione allenamenti non ancora attiva sul database (vedi README)']
         ].find(x => x[0].test(m));
         throw new Error(it ? it[1] : m);
       }
@@ -263,7 +281,7 @@
       async loadAll() {
         const from = new Date(); from.setDate(from.getDate() - 400);
         if (!this._avvisiGenerati) { this._avvisiGenerati = true; try { await sb.rpc('genera_avvisi_certificati'); } catch (e) { /* riprova al prossimo avvio */ } }
-        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt, avv, nts, pet] = await Promise.all([
+        const [imp, isc, pag, ass, ann, reg, con, evs, pe, cnt, avv, nts, pet, alm] = await Promise.all([
           sb.from('impostazioni').select('dati').eq('id', 1).maybeSingle(),
           sb.from('iscritti').select('*').order('cognome').order('nome'),
           sb.from('pagamenti').select('*'),
@@ -276,7 +294,8 @@
           sb.rpc('conteggio_partecipanti_eventi'),
           sb.from('avvisi').select('*').order('creato', { ascending: false }).limit(150),
           sb.from('note_iscritti').select('*'),
-          sb.rpc('partecipanti_eventi_tutti')
+          sb.rpc('partecipanti_eventi_tutti'),
+          sb.from('allenamenti').select('*').gte('data', ymd(from)).order('data', { ascending: false })
         ]);
         return {
           settings: withDefaults(chk(imp) && chk(imp).dati),
@@ -285,7 +304,10 @@
           conteggi: (chk(cnt) || []).reduce((m, r) => { m[r.evento_id] = Number(r.n); return m; }, {}),
           avvisi: chk(avv) || [],
           note: (chk(nts) || []).reduce((m, r) => { m[r.iscritto_id] = r.note || ''; return m; }, {}),
-          nomiEventi: (pet && !pet.error ? pet.data || [] : []).reduce((m, r) => { (m[r.evento_id] = m[r.evento_id] || []).push(r); return m; }, {})
+          nomiEventi: (pet && !pet.error ? pet.data || [] : []).reduce((m, r) => { (m[r.evento_id] = m[r.evento_id] || []).push(r); return m; }, {}),
+          // se la tabella non esiste ancora (database non aggiornato) l'app continua a funzionare
+          allenamenti: alm && !alm.error ? alm.data || [] : [],
+          allenamentiOff: !!(alm && alm.error && /does not exist|schema cache|not find/i.test(alm.error.message || ''))
         };
       },
       async saveSettings(s) {
@@ -320,6 +342,29 @@
         return chk(await sb.from('eventi').insert(row).select().single());
       },
       async deleteEvento(id) { chk(await sb.from('eventi').delete().eq('id', id)); },
+      async saveAllenamento(o) {
+        const row = { data: o.data, slot: o.slot || null, titolo: o.titolo, testo: o.testo || null, contenuto: o.contenuto || null,
+          allegati: (o.allegati || []).map(a => { const r = Object.assign({}, a); delete r.dataUrl; return r; }), visibile: o.visibile !== false, aggiornato: new Date().toISOString() };
+        if (o.id) return chk(await sb.from('allenamenti').update(row).eq('id', o.id).select().single());
+        return chk(await sb.from('allenamenti').insert(row).select().single());
+      },
+      async deleteAllenamento(a) {
+        chk(await sb.from('allenamenti').delete().eq('id', a.id));
+        const paths = (a.allegati || []).map(x => x.path).filter(Boolean);
+        if (paths.length) { try { await sb.storage.from('allenamenti').remove(paths); } catch (e) { /* file orfani: nessun danno */ } }
+      },
+      async uploadFile(file, data) {
+        const safe = (file.name || 'file').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-80);
+        const path = (data || ymd(new Date())) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '-' + safe;
+        chk(await sb.storage.from('allenamenti').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false }));
+        return { path, nome: file.name, tipo: file.type || '', size: file.size };
+      },
+      async removeFiles(paths) { if (paths && paths.length) { try { await sb.storage.from('allenamenti').remove(paths); } catch (e) {} } },
+      async fileUrl(a, download) {
+        if (a.url) return a.url;
+        const r = await sb.storage.from('allenamenti').createSignedUrl(a.path, 3600, download ? { download: a.nome || true } : undefined);
+        return chk(r).signedUrl;
+      },
       async partecipa(evento_id, iscritto_id, si) {
         if (si) chk(await sb.from('partecipazioni_eventi').upsert({ evento_id, iscritto_id }, { onConflict: 'evento_id,iscritto_id', ignoreDuplicates: true }));
         else chk(await sb.from('partecipazioni_eventi').delete().eq('evento_id', evento_id).eq('iscritto_id', iscritto_id));

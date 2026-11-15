@@ -469,3 +469,55 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public.partecipanti_eventi_tutti() from public, anon;
 grant execute on function public.partecipanti_eventi_tutti() to authenticated;
+
+-- =====================================================================
+-- v1.9 · Allenamento del giorno (testo, JSON di Claude, file e link)
+-- File in uno spazio privato "allenamenti" (max 25 MB a file): l'iscritto
+-- attivo vede solo i file degli allenamenti visibili.
+-- =====================================================================
+create table if not exists public.allenamenti (
+  id         uuid primary key default gen_random_uuid(),
+  data       date not null,
+  slot       text check (slot is null or char_length(slot) <= 40),
+  titolo     text not null check (char_length(titolo) between 1 and 120),
+  testo      text check (testo is null or char_length(testo) <= 40000),
+  contenuto  jsonb,
+  allegati   jsonb not null default '[]'::jsonb,
+  visibile   boolean not null default true,
+  creato     timestamptz not null default now(),
+  aggiornato timestamptz not null default now(),
+  check (contenuto is null or pg_column_size(contenuto) <= 200000),
+  check (pg_column_size(allegati) <= 1500000)
+);
+create index if not exists allenamenti_data_idx on public.allenamenti (data);
+
+alter table public.allenamenti enable row level security;
+drop policy if exists "all leggi" on public.allenamenti;
+drop policy if exists "all crea" on public.allenamenti;
+drop policy if exists "all modifica" on public.allenamenti;
+drop policy if exists "all elimina" on public.allenamenti;
+create policy "all leggi" on public.allenamenti for select to authenticated
+  using (e_admin() or (visibile and e_iscritto_attivo()));
+create policy "all crea" on public.allenamenti for insert to authenticated with check (e_admin());
+create policy "all modifica" on public.allenamenti for update to authenticated using (e_admin()) with check (e_admin());
+create policy "all elimina" on public.allenamenti for delete to authenticated using (e_admin());
+grant select, insert, update, delete on public.allenamenti to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('allenamenti', 'allenamenti', false, 26214400)
+on conflict (id) do update set public = false, file_size_limit = 26214400;
+
+drop policy if exists "sct allenamenti leggi" on storage.objects;
+drop policy if exists "sct allenamenti carica" on storage.objects;
+drop policy if exists "sct allenamenti modifica" on storage.objects;
+drop policy if exists "sct allenamenti elimina" on storage.objects;
+create policy "sct allenamenti leggi" on storage.objects for select to authenticated
+  using (bucket_id = 'allenamenti' and (public.e_admin() or (public.e_iscritto_attivo() and exists (
+    select 1 from public.allenamenti a
+    where a.visibile and a.allegati @> jsonb_build_array(jsonb_build_object('path', storage.objects.name))))));
+create policy "sct allenamenti carica" on storage.objects for insert to authenticated
+  with check (bucket_id = 'allenamenti' and public.e_admin());
+create policy "sct allenamenti modifica" on storage.objects for update to authenticated
+  using (bucket_id = 'allenamenti' and public.e_admin()) with check (bucket_id = 'allenamenti' and public.e_admin());
+create policy "sct allenamenti elimina" on storage.objects for delete to authenticated
+  using (bucket_id = 'allenamenti' and public.e_admin());
