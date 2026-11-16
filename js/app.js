@@ -936,7 +936,17 @@
       ${mesiCorsoHtml()}`;
   }
   /* pulsante HIFT Lab (attivabile dall'amministratore in Impostazioni) */
-  function hiftLink() { const h = S.d.settings.hift; return h && h.attivo && /^https:\/\//.test(h.url || '') ? h : null; }
+  function hiftEscluso(id) { const h = S.d.settings.hift; return !!(h && id && (h.esclusi || []).includes(id)); }
+  function hiftLink() {
+    const h = S.d.settings.hift, me = S.sess && S.sess.iscritto;
+    if (!h || !h.attivo || !/^https:\/\//.test(h.url || '')) return null;
+    return me && hiftEscluso(me.id) ? null : h;
+  }
+  async function salvaEsclusioneHift(id, escludi) {
+    const h = Object.assign({}, S.d.settings.hift);
+    h.esclusi = (h.esclusi || []).filter(x => x !== id).concat(escludi ? [id] : []);
+    return run(() => DB.saveSettings(Object.assign({}, S.d.settings, { hift: h })), escludi ? 'Pulsante HIFT Lab disattivato per questo iscritto' : 'Pulsante HIFT Lab attivato per questo iscritto').catch(() => null);
+  }
   function hiftCard() {
     const h = hiftLink(); if (!h) return '';
     return `<a class="card hift-link" href="${esc(h.url)}" target="_blank" rel="noopener"><img src="icons/hift-lab.png" alt="" width="84" height="112"><div><b>HIFT Lab</b><small>Allenamenti funzionali: WOD, HIFT Method, programmi personali, diario e progressi</small></div><span aria-hidden="true">↗</span></a>`;
@@ -1086,6 +1096,10 @@
             <div><b>Quota mensile ${i.quota_attiva !== false ? 'attiva' : 'disattivata'}</b><small>${i.quota_attiva !== false ? 'Deve pagare la quota ogni mese di corso.' : 'Non deve pagare la quota (vale per tutti i mesi).'}</small></div>
             <button type="button" class="switch${i.quota_attiva !== false ? ' on' : ''}" data-quota role="switch" aria-checked="${i.quota_attiva !== false}" aria-label="Attiva o disattiva la quota"><i></i></button>
           </div>
+          ${(() => { const on = !hiftEscluso(id), gen = !!(st.hift && st.hift.attivo); return `<div class="card freq ${on && gen ? 'on' : 'off'}">
+            <div><b>Pulsante HIFT Lab ${on ? 'attivo' : 'disattivato'}</b><small>${!gen ? 'Spento per tutti in Impostazioni: ' + (on ? 'quando lo riaccendi, questo iscritto lo vedrà.' : 'anche riaccendendolo, questo iscritto non lo vedrà.') : on ? 'Vede il pulsante che apre l\'app HIFT Lab.' : 'Non vede il pulsante HIFT Lab.'}</small></div>
+            <button type="button" class="switch${on ? ' on' : ''}" data-hift role="switch" aria-checked="${on}" aria-label="Attiva o disattiva il pulsante HIFT Lab per questo iscritto"><i></i></button>
+          </div>`; })()}
           ${compleannoIl(i.data_nascita, today()) ? `<p class="bday-line">🎂 Oggi compie ${anniIl(i.data_nascita, today())} anni!${augWa(i) ? ` <a href="${esc(augWa(i))}" target="_blank" rel="noopener">Manda gli auguri su WhatsApp ›</a>` : ''}</p>` : ''}
           ${statoCards(i)}
           <p class="privline">${(() => { const c = consensoDi(i.email); return DB.mode === 'demo' ? '' : c ? '🔒 Privacy accettata il ' + fmt(c.accettato_il.slice(0, 10)) + ' (v. ' + esc(c.versione) + ')' : '🔒 Privacy: non ancora accettata (l\'iscritto non si è ancora registrato nell\'app)'; })()}</p>` : ''}
@@ -1140,6 +1154,13 @@
         const ok = await run(() => DB.saveIscritto(Object.assign({}, S.d.iscritti.find(x => x.id === id), { quota_attiva: nuovo })), nuovo ? 'Quota attivata: deve pagare' : 'Quota disattivata: non deve pagare').catch(() => null);
         if (!ok) return;
         i.quota_attiva = nuovo; S.d = await DB.loadAll(); draw(); render();
+      };
+      const fh = w.querySelector('[data-hift]');
+      if (fh) fh.onclick = async () => {
+        sync();
+        const ok = await salvaEsclusioneHift(id, !hiftEscluso(id));
+        if (!ok) return;
+        S.d = await DB.loadAll(); draw(); render();
       };
       const fq = w.querySelector('[data-freq]');
       if (fq) fq.onclick = async () => {
@@ -1208,6 +1229,7 @@
         <label class="check"><input type="checkbox" id="i-hift"${s.hift && s.hift.attivo ? ' checked' : ''}> Mostra agli iscritti il pulsante HIFT Lab</label>
         <label>Indirizzo dell'app<input class="inp" type="url" id="i-hifturl" maxlength="200" value="${esc((s.hift && s.hift.url) || '')}" placeholder="https://…"></label>
         <p class="hint">Il pulsante compare nella home e nel profilo degli iscritti e apre HIFT Lab in una nuova scheda. Ricordati di salvare.</p>
+        ${(() => { const ex = veri().filter(i => hiftEscluso(i.id)); return ex.length ? `<p class="hint">Disattivato per ${ex.length === 1 ? '1 iscritto' : ex.length + ' iscritti'} dalla scheda anagrafica: ${ex.map(i => esc(nomeCompleto(i))).join(', ')}.</p>` : '<p class="hint">Per spegnerlo solo per alcuni iscritti usa l\'interruttore nella loro scheda anagrafica.</p>'; })()}
         ${hiftCard()}
         <button class="btn primary big" id="b-saveimp">Salva impostazioni</button>
       </section>
@@ -1339,7 +1361,7 @@
       const s = Object.assign({}, S.d.settings, {
         slots: leggiSlots(), luogo: $('#i-luogo').value.trim(), stagione_inizio: $('#i-sin').value, stagione_fine: $('#i-sfi').value,
         quota_mensile: Number($('#i-quota').value) || 0, preavviso_giorni: Math.max(1, Number($('#i-pre').value) || 30),
-        hift: { attivo: $('#i-hift').checked, url: $('#i-hifturl').value.trim() }
+        hift: { attivo: $('#i-hift').checked, url: $('#i-hifturl').value.trim(), esclusi: (S.d.settings.hift && S.d.settings.hift.esclusi) || [] }
       });
       if (s.hift.attivo && !/^https:\/\//.test(s.hift.url)) { toast("L'indirizzo di HIFT Lab deve iniziare con https://", 'err'); return; }
       s.mesi_off = (S.d.settings.mesi_off || []).slice();

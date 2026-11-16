@@ -20,7 +20,8 @@
       stagione_fine: (y + 1) + '-06-30',
       quota_mensile: 0,
       // collegamento all'app HIFT Lab (pulsante per gli iscritti): l'amministratore lo attiva o disattiva in Impostazioni
-      hift: { attivo: true, url: 'https://rupi7800-blip.github.io/HiftLab/' },
+      // esclusi: id degli iscritti per cui l'amministratore ha spento il pulsante dalla scheda anagrafica
+      hift: { attivo: true, url: 'https://rupi7800-blip.github.io/HiftLab/', esclusi: [] },
       preavviso_giorni: 30,
       luogo: ''
     };
@@ -28,7 +29,7 @@
   function withDefaults(s) {
     const d = defaultSettings();
     s = s && typeof s === 'object' ? s : {};
-    return Object.assign(d, s, { slots: Array.isArray(s.slots) && s.slots.length ? s.slots : d.slots, hift: Object.assign({}, d.hift, s.hift && typeof s.hift === 'object' ? s.hift : {}) });
+    return Object.assign(d, s, { slots: Array.isArray(s.slots) && s.slots.length ? s.slots : d.slots, hift: (h => Object.assign(h, { esclusi: Array.isArray(h.esclusi) ? h.esclusi : [] }))(Object.assign({}, d.hift, s.hift && typeof s.hift === 'object' ? s.hift : {})) });
   }
 
   /* ------------------------------------------------------------------ DEMO */
