@@ -928,11 +928,18 @@
       <p>${out.length ? 'Prossima lezione: <b>' + esc(out[0][0] === today() ? 'oggi' : fmtLong(out[0][0])) + '</b> alle ' + esc(out[0][1].inizio) : 'Nessuna lezione in programma.'}</p>
       <small>Risulti sempre presente: se non puoi venire, segnala l'assenza.</small></section>
       ${ALL.oggiHtml(today())}
+      ${hiftCard()}
       ${statoCards(me)}
       ${(() => { const ev = (S.d.eventi || []).filter(e => e.data >= today()).slice(0, 2); return ev.length ? '<h3 class="sec-t">Prossimi eventi</h3>' + ev.map(e => eventoCard(e, true)).join('') : ''; })()}
       <h3 class="sec-t">Prossime lezioni</h3>
       ${out.length ? out.map(x => lezioneCard(x[0], x[1])).join('') : '<p class="muted card pad">Nessuna lezione in programma.</p>'}
       ${mesiCorsoHtml()}`;
+  }
+  /* pulsante HIFT Lab (attivabile dall'amministratore in Impostazioni) */
+  function hiftLink() { const h = S.d.settings.hift; return h && h.attivo && /^https:\/\//.test(h.url || '') ? h : null; }
+  function hiftCard() {
+    const h = hiftLink(); if (!h) return '';
+    return `<a class="card hift-link" href="${esc(h.url)}" target="_blank" rel="noopener"><img src="icons/hift-lab.png" alt="" width="84" height="112"><div><b>HIFT Lab</b><small>Allenamenti funzionali: WOD, HIFT Method, programmi personali, diario e progressi</small></div><span aria-hidden="true">↗</span></a>`;
   }
   function statoCards(i) {
     const admin = S.sess.role === 'admin';
@@ -967,6 +974,7 @@
       </form>
       ${statoCards(me)}
       ${quoteGrid(me)}
+      ${hiftCard()}
       ${installHtml()}
       ${DB.mode === 'online' && !S.sess.anteprima ? `<button class="btn ghost wide" id="b-pw">Cambia password</button><button class="btn ghost wide" id="b-logout">${ic('out')} Esci</button>` : ''}
       <button class="btn ghost wide" data-checkupd>Controlla aggiornamenti</button>
@@ -1196,6 +1204,11 @@
         <h3 class="sec-t">Quote e avvisi</h3>
         <div class="two"><label>Quota mensile (€)<input class="inp" type="number" min="0" step="0.5" id="i-quota" value="${esc(s.quota_mensile || 0)}"></label>
         <label>Giallo da (giorni prima)<input class="inp" type="number" min="1" max="120" id="i-pre" value="${esc(s.preavviso_giorni || 30)}"></label></div>
+        <h3 class="sec-t">Collegamento HIFT Lab</h3>
+        <label class="check"><input type="checkbox" id="i-hift"${s.hift && s.hift.attivo ? ' checked' : ''}> Mostra agli iscritti il pulsante HIFT Lab</label>
+        <label>Indirizzo dell'app<input class="inp" type="url" id="i-hifturl" maxlength="200" value="${esc((s.hift && s.hift.url) || '')}" placeholder="https://…"></label>
+        <p class="hint">Il pulsante compare nella home e nel profilo degli iscritti e apre HIFT Lab in una nuova scheda. Ricordati di salvare.</p>
+        ${hiftCard()}
         <button class="btn primary big" id="b-saveimp">Salva impostazioni</button>
       </section>
       <section class="card pad">
@@ -1325,8 +1338,10 @@
     if (si) si.onclick = async () => {
       const s = Object.assign({}, S.d.settings, {
         slots: leggiSlots(), luogo: $('#i-luogo').value.trim(), stagione_inizio: $('#i-sin').value, stagione_fine: $('#i-sfi').value,
-        quota_mensile: Number($('#i-quota').value) || 0, preavviso_giorni: Math.max(1, Number($('#i-pre').value) || 30)
+        quota_mensile: Number($('#i-quota').value) || 0, preavviso_giorni: Math.max(1, Number($('#i-pre').value) || 30),
+        hift: { attivo: $('#i-hift').checked, url: $('#i-hifturl').value.trim() }
       });
+      if (s.hift.attivo && !/^https:\/\//.test(s.hift.url)) { toast("L'indirizzo di HIFT Lab deve iniziare con https://", 'err'); return; }
       s.mesi_off = (S.d.settings.mesi_off || []).slice();
       if (s.stagione_inizio && s.stagione_fine && s.stagione_fine < s.stagione_inizio) return toast('La fine stagione è prima dell\'inizio', 'err');
       if (s.slots.some(x => x.fine <= x.inizio)) return toast('Controlla gli orari: la fine deve essere dopo l\'inizio', 'err');
