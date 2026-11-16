@@ -12,6 +12,7 @@ Web app del **Training Lab dello Sci Club Taino** — installabile su Android e 
   - **link** (video YouTube, pagine, chat condivise).
   Si può tenere nascosto agli iscritti per prepararlo in anticipo e duplicare su un'altra data. Compare nella home dell'iscritto, nel calendario e sulle lezioni.
 - **Impostazioni** (amministratore): giorni e orari delle lezioni, luogo, periodo della stagione, quota mensile, giorni di preavviso per il giallo. Le singole lezioni si annullano dal calendario.
+- **Pulsante HIFT Lab** nella home e nel profilo degli iscritti: apre l'app di allenamenti funzionali HIFT Lab. L'amministratore lo attiva o disattiva (e ne cambia l'indirizzo) in Impostazioni → Collegamento HIFT Lab; l'impostazione è salvata con le altre, senza modifiche al database.
 - **Iscritti**: vedono le proprie prossime lezioni, segnalano o ritirano un'assenza, controllano certificato, iscrizione e quota.
 - **Sistema di aggiornamento** come AgendApp: tasto "Aggiorna" + notifica quando `version.json` ha una versione nuova.
 

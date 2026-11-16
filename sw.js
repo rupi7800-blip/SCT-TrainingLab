@@ -10,7 +10,7 @@ const CACHE = 'sct-traininglab-app-4';
 const ASSETS = [
   './', './index.html', './css/style.css', './js/config.js', './js/privacy.js', './js/data.js', './js/allenamenti.js', './js/app.js', './js/aggiornamenti.js', './js/vendor/supabase.js',
   './manifest.webmanifest', './icons/logo.png', './icons/icon-32.png', './icons/icon-180.png', './icons/icon-192.png',
-  './icons/icon-512.png', './icons/maskable-512.png'
+  './icons/icon-512.png', './icons/maskable-512.png', './icons/hift-lab.png'
 ];
 
 self.addEventListener('install', e => {

@@ -492,3 +492,11 @@ dl.jt dd { margin: 0 0 0 4px; }
   .les-card { flex-wrap: wrap; }
   .les-card > .btn { flex: 1 1 100%; }
 }
+
+/* pulsante HIFT Lab */
+.hift-link { display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; text-decoration: none; color: var(--ink); border-left: 5px solid #fa8c1d; }
+.hift-link img { width: 42px; height: auto; flex: none; }
+.hift-link div { flex: 1; min-width: 0; }
+.hift-link b { display: block; font-size: 16px; }
+.hift-link small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.35; margin-top: 2px; }
+.hift-link span { font-size: 20px; color: #fa8c1d; flex: none; }
